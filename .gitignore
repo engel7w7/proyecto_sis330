@@ -1,0 +1,57 @@
+# Exclusión de Datasets (en cualquier subcarpeta)
+**/data/
+**/datasets/
+**/dataset_50k/
+**/ASVspoof/
+**/ASVspoof2019/
+**/FaceForensics/
+**/FaceForensics++/
+**/archivos_de_prueba/
+*.tar.gz
+*.zip
+*.7z
+
+!*.pth
+!*.pt
+!*.tflite
+!detector_multimodal_edge/src/checkpoints/
+!android_app/app/src/main/assets/
+
+# Python Cache y Entornos
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Android y Gradle Build
+.gradle/
+build/
+app/build/
+android_app/.gradle/
+android_app/build/
+android_app/app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# Archivos de Sistema y HTML
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.html
+!Documentacion_Defensa_SIS330.html

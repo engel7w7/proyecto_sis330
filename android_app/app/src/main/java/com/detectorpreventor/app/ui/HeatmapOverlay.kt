@@ -1,4 +1,4 @@
-﻿package com.detectorpreventor.app.ui
+package com.detectorpreventor.app.ui
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
@@ -33,9 +33,7 @@ import com.detectorpreventor.app.ui.theme.CardBorder
 import com.detectorpreventor.app.ui.theme.SurfaceDark
 
 /**
- * Visualizador de Mapa de Calor Grad-CAM (Explicabilidad XAI):
- * Renderiza superposiciones térmicas multi-focales de alta definición
- * sobre el rostro o espectrograma Mel STFT detectando manipulaciones IA.
+ * Componente UI para visualización del mapa de calor explicativo Grad-CAM sobre la imagen o espectrograma.
  */
 @Composable
 fun HeatmapOverlay(
@@ -57,7 +55,6 @@ fun HeatmapOverlay(
             contentAlignment = Alignment.Center
         ) {
             if (bitmap != null) {
-                // Renderizar Imagen base (Rostro o Espectrograma)
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "Muestra Multimedia",
@@ -65,7 +62,6 @@ fun HeatmapOverlay(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                // Lienzo Espectrograma STFT Sintético HD cuando no hay imagen cargada
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
@@ -99,29 +95,24 @@ fun HeatmapOverlay(
                 }
             }
 
-            // Superposición Térmica Multi-Focal Grad-CAM
             if (isHeatmapActive) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-
-                    // Ajustar intensidad térmica según el factor de riesgo calculado por la IA
                     val intensity = (riskFactor * 0.85f).coerceIn(0.25f, 0.90f)
 
-                    // Focal Primary (Región Ocular / Gesticular / Alta Frecuencia)
                     val mainGrad = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFDC2626).copy(alpha = intensity),          // Red Hot (Máxima Anomalía)
-                            Color(0xFFF59E0B).copy(alpha = intensity * 0.7f),   // Amber Transición
-                            Color(0xFFFACC15).copy(alpha = intensity * 0.4f),   // Yellow Foco Secundario
-                            Color(0xFF38BDF8).copy(alpha = 0.1f),               // Cyan Neutro
+                            Color(0xFFDC2626).copy(alpha = intensity),
+                            Color(0xFFF59E0B).copy(alpha = intensity * 0.7f),
+                            Color(0xFFFACC15).copy(alpha = intensity * 0.4f),
+                            Color(0xFF38BDF8).copy(alpha = 0.1f),
                             Color.Transparent
                         ),
                         center = Offset(w * 0.52f, h * 0.42f),
                         radius = w * 0.45f
                     )
 
-                    // Focal Secondary (Borde de Fusión de Rostro / Resonancia de Voz)
                     val secGrad = Brush.radialGradient(
                         colors = listOf(
                             Color(0xFFEF4444).copy(alpha = intensity * 0.8f),
@@ -135,14 +126,12 @@ fun HeatmapOverlay(
                     drawRect(brush = mainGrad, size = Size(w, h))
                     drawRect(brush = secGrad, size = Size(w, h))
 
-                    // Retícula de Inspección Bounding Box & Crosshairs MLOps
                     val strokeWidth = 2.dp.toPx()
                     val rectLeft = w * 0.15f
                     val rectTop = h * 0.12f
                     val rectWidth = w * 0.70f
                     val rectHeight = h * 0.76f
 
-                    // Bounding Box Punteada
                     drawRoundRect(
                         color = Color(0xFF38BDF8).copy(alpha = 0.6f),
                         topLeft = Offset(rectLeft, rectTop),
@@ -156,7 +145,6 @@ fun HeatmapOverlay(
                 }
             }
 
-            // Encabezado Badge en Top-Left: "Grad-CAM XAI Active"
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -182,7 +170,6 @@ fun HeatmapOverlay(
                 }
             }
 
-            // Leyenda Escala Térmica en Bottom: [0.0 Bajo 🟦 🟨 🟧 🟥 1.0 Alto]
             if (isHeatmapActive) {
                 Box(
                     modifier = Modifier
@@ -207,7 +194,6 @@ fun HeatmapOverlay(
                             fontWeight = FontWeight.Medium
                         )
 
-                        // Barra Gradiente Térmico Escala
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -238,3 +224,4 @@ fun HeatmapOverlay(
         }
     }
 }
+

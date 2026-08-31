@@ -1,4 +1,4 @@
-﻿package com.detectorpreventor.app.ui
+package com.detectorpreventor.app.ui
 
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -26,7 +26,6 @@ import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaPayload
 import com.detectorpreventor.app.ui.theme.*
 
-// Secciones de Navegación por Ventanas
 sealed class ScreenNav(val route: String, val title: String, val icon: ImageVector) {
     object Scanner : ScreenNav("scanner", "Escáner", Icons.Default.Shield)
     object Upload : ScreenNav("upload", "Cargar", Icons.Default.FolderOpen)
@@ -35,8 +34,7 @@ sealed class ScreenNav(val route: String, val title: String, val icon: ImageVect
 }
 
 /**
- * Pantalla Principal Executive con Menú de Navegación por Ventanas.
- * Diseñado con estética profesional slate executive, totalmente offline.
+ * Pantalla principal que integra la barra de navegación inferior y las cuatro vistas principales.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,7 +121,7 @@ fun DetectorScreen(
 }
 
 /**
- * Ventana 1: Escáner y Veredicto de Riesgo Live
+ * Vista de escáner y resultado de análisis.
  */
 @Composable
 fun ScannerView(
@@ -141,7 +139,6 @@ fun ScannerView(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // Cabecera Executive
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -186,7 +183,6 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Tarjeta del Archivo Bajo Análisis
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(12.dp),
@@ -238,7 +234,6 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Toggle Explicabilidad Grad-CAM
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -262,7 +257,6 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Previsualización y Grad-CAM Overlay
         val previewBitmap = payload?.faceKeyframe ?: payload?.audioSpectrogram
         val riskFactor = (fusionResult?.globalRiskPercentage ?: 50f) / 100f
 
@@ -274,7 +268,6 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Tarjeta de Veredicto y Score-Level Fusion
         if (fusionResult != null) {
             RiskIndicatorCard(fusionResult = fusionResult)
         } else {
@@ -301,7 +294,6 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Botones de Acción Preventiva
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -364,7 +356,7 @@ fun ScannerView(
 }
 
 /**
- * Ventana 2: Carga Libre de Archivos Multimedia
+ * Vista de carga libre de archivos multimedia.
  */
 @Composable
 fun UploadView(
@@ -393,7 +385,6 @@ fun UploadView(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Zona interactiva de Carga
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(16.dp),
@@ -451,7 +442,6 @@ fun UploadView(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Integración con Redes Sociales (WhatsApp / Telegram)
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(12.dp),
@@ -499,7 +489,7 @@ fun UploadView(
 }
 
 /**
- * Ventana 3: Dataset de Prueba Universitario (5 Muestras por Detector)
+ * Vista de dataset de pruebas académicas.
  */
 @Composable
 fun BenchmarkView(
@@ -527,7 +517,6 @@ fun BenchmarkView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Pestañas de Selección de Categoría
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -566,7 +555,6 @@ fun BenchmarkView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Lista de 5 tarjetas por cada categoría
         val samples = when (selectedCategory) {
             "audio" -> listOf(
                 Pair("Muestra 1: Voz Humana Real (ASVspoof Bonafide)", "Audios .flac limpios de voz real humana. Inferencia esperada: RIESGO BAJO (4%)"),
@@ -583,7 +571,7 @@ fun BenchmarkView(
                 Pair("Muestra 5: Fotografía HD Original", "Fotografía prístina de alta resolución. Inferencia esperada: RIESGO BAJO (5%)")
             )
             else -> listOf(
-                Pair("Muestra 1: Entrevista Real YouTube (FF++)", "Video original prístino sin alteraciones. Inferencia esperada: RIESGO BAJO (5%)"),
+                Pair("Muestra 1: Entrevista Real YouTube (FF++)", "Video original prístino sin alterations. Inferencia esperada: RIESGO BAJO (5%)"),
                 Pair("Muestra 2: Sincronización Labial LipSync AI", "Video con movimiento de labios alterado por IA. Inferencia esperada: ALTO RIESGO (91%)"),
                 Pair("Muestra 3: FaceSwap HD Video", "Secuencia de video con rostro sustituido. Inferencia esperada: ALTO RIESGO (95%)"),
                 Pair("Muestra 4: Avatar IA Multimodal Completo", "Video sintético con audio y rostro generados. Inferencia esperada: ALTO RIESGO (96%)"),
@@ -639,7 +627,7 @@ fun BenchmarkView(
 }
 
 /**
- * Ventana 4: Arquitectura MLOps Edge AI e Información del Sistema
+ * Vista de información del sistema y resumen de la arquitectura.
  */
 @Composable
 fun SystemInfoView() {
@@ -706,3 +694,4 @@ fun SystemInfoView() {
         }
     }
 }
+

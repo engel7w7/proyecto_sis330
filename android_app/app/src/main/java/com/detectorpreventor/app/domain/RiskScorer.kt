@@ -7,19 +7,18 @@ enum class RiskLevel {
 }
 
 data class FusionResult(
-    val globalRiskPercentage: Float,       // 0.0 - 100.0%
-    val audioFraudProb: Float,             // 0.0 - 1.0
-    val visionFraudProb: Float,            // 0.0 - 1.0
+    val globalRiskPercentage: Float,
+    val audioFraudProb: Float,
+    val visionFraudProb: Float,
     val riskLevel: RiskLevel,
-    val weightAudio: Float,                // Peso utilizado para Audio (Ej. 0.6)
-    val weightVision: Float,               // Peso utilizado para Visión (Ej. 0.4)
+    val weightAudio: Float,
+    val weightVision: Float,
     val diagnosticSummary: String
 )
 
 /**
  * Módulo de Fusión Tardía (Score-Level Fusion):
- * Combina matemáticamente las probabilidades calculadas por los modelos expertos
- * de Audio y Visión garantizando una toma de decisiones explicable y desacoplada.
+ * Combina ponderadamente las probabilidades calculadas por los modelos expertos de Audio y Visión.
  */
 object RiskScorer {
 
@@ -27,8 +26,8 @@ object RiskScorer {
     private const val DEFAULT_WEIGHT_VISION = 0.4f
 
     /**
-     * Calcula el Riesgo Global ponderado según la fórmula de Score-Level Fusion:
-     * Score = (w_a * P_audio) + (w_v * P_vision)
+     * Calcula el porcentaje de riesgo global a partir de las probabilidades individuales.
+     * Fórmula: Score = (w_a * P_audio) + (w_v * P_vision)
      */
     fun calculateGlobalRisk(
         audioProb: Float?,
@@ -38,27 +37,22 @@ object RiskScorer {
     ): FusionResult {
         val (finalAudioProb, finalVisionProb, wAudio, wVision) = when {
             audioProb != null && visionProb != null -> {
-                // Caso Multimodal Completo (Video o Audio+Imagen)
                 val totalWeight = customWeightAudio + customWeightVision
                 val normAudioWeight = customWeightAudio / totalWeight
                 val normVisionWeight = customWeightVision / totalWeight
                 Tuple4(audioProb, visionProb, normAudioWeight, normVisionWeight)
             }
             audioProb != null -> {
-                // Caso Puramente Audio (.opus, .mp3)
                 Tuple4(audioProb, 0f, 1.0f, 0.0f)
             }
             visionProb != null -> {
-                // Caso Puramente Visión (.jpg, .png)
                 Tuple4(0f, visionProb, 0.0f, 1.0f)
             }
             else -> {
-                // Fallback sin datos válidos
                 Tuple4(0f, 0f, 0.5f, 0.5f)
             }
         }
 
-        // Aplicar la Ponderación Matemática de Score-Level Fusion
         val score = (wAudio * finalAudioProb) + (wVision * finalVisionProb)
         val globalPercentage = (score * 100.0f).coerceIn(0.0f, 100.0f)
 
@@ -106,3 +100,4 @@ object RiskScorer {
 
     private data class Tuple4<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
 }
+

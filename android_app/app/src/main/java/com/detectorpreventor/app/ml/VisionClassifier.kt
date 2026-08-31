@@ -13,7 +13,7 @@ import java.nio.channels.FileChannel
 
 /**
  * Clasificador TFLite para el Modelo Experto de Visión (EfficientNet-B0 INT8).
- * Configurado con aceleración por GPU Delegate y gestión estricta de memoria (<200MB RAM).
+ * Configurado opcionalmente con aceleración por GPU Delegate.
  */
 class VisionClassifier(private val context: Context) {
 
@@ -53,7 +53,7 @@ class VisionClassifier(private val context: Context) {
                 isInitialized = true
                 Log.d(TAG, "VisionClassifier inicializado con éxito desde asset.")
             } else {
-                Log.w(TAG, "Archivo '$MODEL_FILE' no encontrado en assets. Operando en modo simulación Edge AI.")
+                Log.w(TAG, "Archivo '$MODEL_FILE' no encontrado en assets. Operando en modo simulación.")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error al inicializar VisionClassifier TFLite: ${e.message}")
@@ -132,9 +132,10 @@ class VisionClassifier(private val context: Context) {
             interpreter = null
             gpuDelegate?.close()
             gpuDelegate = null
-            Log.d(TAG, "Recursos de VisionClassifier liberados para mantener RAM < 200MB.")
+            Log.d(TAG, "Recursos de VisionClassifier liberados.")
         } catch (e: Exception) {
             Log.e(TAG, "Error al cerrar VisionClassifier: ${e.message}")
         }
     }
 }
+

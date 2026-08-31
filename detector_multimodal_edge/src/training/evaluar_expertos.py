@@ -1,3 +1,8 @@
+"""
+Módulo de evaluación detallada de modelos expertos de audio y visión.
+Genera un reporte de métricas cuantitativas (BCE Loss, Accuracy, Precision, Recall, F1-Score).
+"""
+
 import os
 import json
 import torch
@@ -10,6 +15,7 @@ from src.models.dataloaders import obtener_dataloaders
 from src.training.train_expertos import calcular_metricas
 
 def evaluar_modelo_detallado(modelo, loader, model_path, nombre="Modelo"):
+    """Evalúa las predicciones del modelo en el conjunto de validación y retorna el diccionario de métricas."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     modelo = modelo.to(device)
     modelo.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
@@ -37,20 +43,13 @@ def evaluar_modelo_detallado(modelo, loader, model_path, nombre="Modelo"):
     metricas = calcular_metricas(np.array(all_preds), np.array(all_targets))
     tamanio_mb = os.path.getsize(model_path) / (1024 * 1024)
 
-    print(f"\n---------------------------------------------------------")
-    print(f" EVALUACION DETALLADA MLOPS: {nombre.upper()}")
-    print(f"---------------------------------------------------------")
-    print(f"  - Archivo Checkpoint: {model_path} ({tamanio_mb:.2f} MB)")
-    print(f"  - Dispositivo:        {device}")
-    print(f"  - BCE Loss:           {avg_loss:.4f}")
-    print(f"  - Accuracy:           {metricas['accuracy']*100:.2f}%")
-    print(f"  - Precision:          {metricas['precision']*100:.2f}%")
-    print(f"  - Recall:             {metricas['recall']*100:.2f}%")
-    print(f"  - F1-Score:           {metricas['f1_score']*100:.2f}%")
-    print(f"  - Matriz de Confusion:")
-    print(f"      [ True Positive (TP): {metricas['tp']} | False Positive (FP): {metricas['fp']} ]")
-    print(f"      [ False Negative (FN): {metricas['fn']} | True Negative  (TN): {metricas['tn']} ]")
-    print(f"---------------------------------------------------------")
+    print(f"\nEvaluación: {nombre}")
+    print(f" - Archivo:     {model_path} ({tamanio_mb:.2f} MB)")
+    print(f" - BCE Loss:    {avg_loss:.4f}")
+    print(f" - Accuracy:    {metricas['accuracy']*100:.2f}%")
+    print(f" - Precision:   {metricas['precision']*100:.2f}%")
+    print(f" - Recall:      {metricas['recall']*100:.2f}%")
+    print(f" - F1-Score:    {metricas['f1_score']*100:.2f}%")
 
     return {
         "modelo": nombre,
@@ -60,6 +59,7 @@ def evaluar_modelo_detallado(modelo, loader, model_path, nombre="Modelo"):
     }
 
 def evaluar_expertos():
+    """Ejecuta la evaluación en los modelos de audio y visión guardados y escribe evaluacion_final_metricas.json."""
     dir_audio = os.path.join(DATA_PROCESSED_DIR, 'audio')
     dir_vision = os.path.join(DATA_PROCESSED_DIR, 'vision')
 
@@ -80,7 +80,8 @@ def evaluar_expertos():
     json_path = os.path.join(MODELS_SAVED_DIR, "evaluacion_final_metricas.json")
     with open(json_path, 'w') as f:
         json.dump(reporte_final, f, indent=4)
-    print(f"\n[OK] Reporte completo de metricas guardado en: {json_path}")
+    print(f"\n[OK] Reporte de métricas guardado en: {json_path}")
 
 if __name__ == "__main__":
     evaluar_expertos()
+

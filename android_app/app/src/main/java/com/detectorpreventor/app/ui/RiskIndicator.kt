@@ -1,4 +1,4 @@
-﻿package com.detectorpreventor.app.ui
+package com.detectorpreventor.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,8 +19,7 @@ import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.ui.theme.*
 
 /**
- * Componente UI Executive para presentar el Veredicto Final de Riesgo
- * e indicador de barra con explicabilidad de Score-Level Fusion.
+ * Componente UI para presentar la tarjeta del veredicto final de riesgo.
  */
 @Composable
 fun RiskIndicatorCard(
@@ -41,7 +40,6 @@ fun RiskIndicatorCard(
             .border(1.dp, CardBorder, RoundedCornerShape(16.dp))
             .padding(18.dp)
     ) {
-        // Badge de Nivel de Riesgo
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -62,7 +60,6 @@ fun RiskIndicatorCard(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Porcentaje Global de Riesgo y Desglose
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -83,7 +80,6 @@ fun RiskIndicatorCard(
                 )
             }
 
-            // Desglose de Probabilidades por Modelo Experto
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -118,7 +114,6 @@ fun RiskIndicatorCard(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Barra de Progreso Visual
         LinearProgressIndicator(
             progress = { (fusionResult.globalRiskPercentage / 100f).coerceIn(0f, 1f) },
             modifier = Modifier
@@ -131,7 +126,6 @@ fun RiskIndicatorCard(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Resumen Diagnóstico Explicable
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -147,3 +141,4 @@ fun RiskIndicatorCard(
         }
     }
 }
+

@@ -1,4 +1,4 @@
-﻿package com.detectorpreventor.app.ui
+package com.detectorpreventor.app.ui
 
 import android.content.Intent
 import android.net.Uri
@@ -30,9 +30,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Actividad Principal de "Detector Preventor".
- * Permite cargar archivos locales (.opus, .mp3, .jpg, .mp4), recibir archivos desde WhatsApp/Telegram,
- * ejecutar las 5 muestras por cada tipo de detector y coordinar la inferencia Edge AI.
+ * Actividad principal de la aplicación.
+ * Gestiona el flujo de selección de archivos, recepción de intents y coordinación de la inferencia.
  */
 class MainActivity : ComponentActivity() {
 
@@ -48,7 +47,6 @@ class MainActivity : ComponentActivity() {
     private var currentPayload by mutableStateOf<ProcessedMediaPayload?>(null)
     private var currentFusionResult by mutableStateOf<FusionResult?>(null)
 
-    // Selector de Archivos nativo del celular
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -62,13 +60,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializar componentes de dominio e IA Edge
         mediaRouter = MediaRouter(applicationContext)
         audioClassifier = AudioClassifier(applicationContext)
         visionClassifier = VisionClassifier(applicationContext)
         telemetryManager = FirebaseTelemetryManager(applicationContext)
 
-        // Procesar Intent entrante si fue compartido desde WhatsApp/Telegram
         handleIncomingIntent(intent)
 
         setContent {
@@ -164,7 +160,6 @@ class MainActivity : ComponentActivity() {
 
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
 
-            // Nombres y escenarios prediseñados para el Dataset de Prueba (5 por detector)
             val (sampleName, targetAudioProb, targetVisionProb) = when (sampleType) {
                 "audio" -> when (index) {
                     1 -> Triple("Muestra 1: Voz Humana Real (ASVspoof Bonafide).opus", 0.04f, null)
@@ -241,3 +236,4 @@ class MainActivity : ComponentActivity() {
         visionClassifier.close()
     }
 }
+

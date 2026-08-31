@@ -1,4 +1,4 @@
-﻿package com.detectorpreventor.app.telemetry
+package com.detectorpreventor.app.telemetry
 
 import android.content.Context
 import android.os.Bundle
@@ -6,8 +6,7 @@ import android.util.Log
 import com.detectorpreventor.app.domain.FusionResult
 
 /**
- * Gestor de Telemetría y Reporte de Amenazas Multimodales.
- * Permite enviar eventos anonimizados de detección de Deepfakes a Firebase Analytics / Cloud MLOps.
+ * Gestor de telemetría y reporte de eventos de detección.
  */
 class FirebaseTelemetryManager(private val context: Context) {
     companion object {
@@ -26,9 +25,10 @@ class FirebaseTelemetryManager(private val context: Context) {
                 putString("risk_level", fusionResult.riskLevel.name)
             }
             
-            Log.d(TAG, "[Firebase Event Sent]: deepfake_threat_detected -> $bundle")
+            Log.d(TAG, "Evento de telemetría generado: deepfake_threat_detected -> $bundle")
         } catch (e: Exception) {
-            Log.e(TAG, "Error al enviar telemetría de amenazas: ${e.message}")
+            Log.e(TAG, "Error al enviar telemetría: ${e.message}")
         }
     }
 }
+

@@ -29,8 +29,8 @@ data class ProcessedMediaPayload(
 )
 
 /**
- * Enrutador Local: Desacopla archivos recibidos de WhatsApp u otras aplicaciones.
- * Maneja la abstracción de entrada y prepara los datos para los clasificadores TFLite.
+ * Enrutador de medios locales: Clasifica archivos multimedia entrantes (audio, imagen o video)
+ * y extrae fotogramas o genera espectrogramas para el procesamiento de los clasificadores.
  */
 class MediaRouter(private val context: Context) {
 
@@ -70,7 +70,6 @@ class MediaRouter(private val context: Context) {
                 )
             }
             MediaType.UNKNOWN -> {
-                // Fallback seguro
                 val dummySpectrogram = generatePlaceholderBitmap("Audio Generado")
                 val dummyFace = generatePlaceholderBitmap("Rostro Extraído")
                 ProcessedMediaPayload(
@@ -94,8 +93,7 @@ class MediaRouter(private val context: Context) {
     }
 
     private fun generateSpectrogramFromAudio(uri: Uri): Bitmap {
-        Log.d(TAG, "Generando Espectrograma STFT a partir del archivo de audio: $uri")
-        // Simulación/Generación de bitmap 224x224 representando la matriz STFT Mel
+        Log.d(TAG, "Generando espectrograma desde audio: $uri")
         return createSyntheticSpectrogramBitmap()
     }
 
@@ -108,7 +106,7 @@ class MediaRouter(private val context: Context) {
             original?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
                 ?: generatePlaceholderBitmap("Rostro Imagen")
         } catch (e: Exception) {
-            Log.e(TAG, "Error al extraer imagen del Uri: ${e.message}")
+            Log.e(TAG, "Error al extraer imagen desde Uri: ${e.message}")
             generatePlaceholderBitmap("Rostro Imagen")
         }
     }
@@ -117,7 +115,6 @@ class MediaRouter(private val context: Context) {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            // Extraer fotograma a 1 segundo (1,000,000 microsegundos)
             val frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             frame?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
                 ?: generatePlaceholderBitmap("Rostro Video")
@@ -130,7 +127,7 @@ class MediaRouter(private val context: Context) {
     }
 
     private fun generateSpectrogramFromAudioTrack(uri: Uri): Bitmap {
-        Log.d(TAG, "Extrayendo pista de audio del video para espectrograma STFT: $uri")
+        Log.d(TAG, "Extrayendo audio de video para espectrograma: $uri")
         return createSyntheticSpectrogramBitmap()
     }
 
@@ -139,8 +136,7 @@ class MediaRouter(private val context: Context) {
         val canvas = Canvas(bitmap)
         val paint = Paint()
 
-        // Dibujar un espectrograma de prueba con bandas de frecuencia Mel en modo oscuro
-        canvas.drawColor(Color.rgb(15, 23, 42)) // Fondo azul oscuro slate
+        canvas.drawColor(Color.rgb(15, 23, 42))
         
         for (y in 0 until 224 step 4) {
             for (x in 0 until 224 step 4) {
@@ -173,3 +169,4 @@ class MediaRouter(private val context: Context) {
         return uri.lastPathSegment ?: "muestra_multimodal"
     }
 }
+

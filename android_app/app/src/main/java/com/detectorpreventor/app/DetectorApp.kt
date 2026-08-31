@@ -1,13 +1,13 @@
-﻿package com.detectorpreventor.app
+package com.detectorpreventor.app
 
 import android.app.Application
 
 /**
- * Punto de Entrada Principal de la Aplicación Android Nativa.
- * Inicializa la aplicación offline para la detección multimodal.
+ * Punto de entrada principal de la aplicación Android Detector Preventor.
  */
 class DetectorApp : Application() {
     override fun onCreate() {
         super.onCreate()
     }
 }
+

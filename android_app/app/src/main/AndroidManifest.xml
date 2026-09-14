@@ -9,20 +9,21 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".DetectorApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@android:drawable/sym_def_app_icon"
-        android:label="SIS-330 Detector Preventor"
+        android:label="Detector Preventor"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-
+        
         <activity
-            android:name="com.sis330.detector.MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true"
-            android:label="SIS-330 Detector Preventor"
+            android:label="Detector Preventor"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-
+            
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -48,6 +49,17 @@
             </intent-filter>
 
         </activity>
+
+        <service
+            android:name=".notifications.NotificationMonitorService"
+            android:label="Detector Preventor Monitor"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>

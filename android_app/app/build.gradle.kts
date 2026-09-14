@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.sis330.detector"
+    namespace = "com.detectorpreventor.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.sis330.detector"
+        applicationId = "com.detectorpreventor.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -47,6 +47,7 @@ android {
 
     androidResources {
         noCompress += "tflite"
+        noCompress += "pt"
     }
 }
 

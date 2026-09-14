@@ -1,4 +1,4 @@
-package com.sis330.detector.ml
+package com.detectorpreventor.app.ml
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -12,22 +12,22 @@ import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
 /**
- * Clasificador Edge TFLite para el Modelo Experto de Visión (EfficientNet-B0 INT8).
- * Proyecto SIS-330: Detector Móvil Multimodal de Estafas Digitales.
+ * Clasificador TFLite para el Modelo Experto de Audio (MobileNetV3-Small INT8).
+ * Configurado opcionalmente con aceleración por GPU Delegate.
  */
-class VisionClassifier(private val context: Context) {
+class AudioClassifier(private val context: Context) {
 
     companion object {
-        private const val TAG = "VisionClassifier"
-        private const val MODEL_FILE = "experto_vision_int8.tflite"
+        private const val TAG = "AudioClassifier"
+        private const val MODEL_FILE = "experto_audio_int8.tflite"
+        private const val ALT_MODEL_FILE = "modelo_audio_int8.tflite"
         private const val INPUT_SIZE = 224
         private const val PIXEL_SIZE = 3
     }
 
     private var interpreter: Interpreter? = null
     private var gpuDelegate: GpuDelegate? = null
-    var isInitialized: Boolean = false
-        private set
+    private var isInitialized = false
 
     init {
         initInterpreter()
@@ -42,36 +42,33 @@ class VisionClassifier(private val context: Context) {
                 val delegateOptions = compatList.bestOptionsForThisDevice
                 gpuDelegate = GpuDelegate(delegateOptions)
                 options.addDelegate(gpuDelegate)
-                Log.d(TAG, "Aceleración por GPU Delegate activada para VisionClassifier.")
+                Log.d(TAG, "GpuDelegate habilitado para AudioClassifier.")
             } else {
                 options.setNumThreads(4)
-                Log.d(TAG, "Inferencia en CPU con 4 hilos activada para VisionClassifier.")
+                Log.d(TAG, "CPU Multi-threading (4 hilos) activado para AudioClassifier.")
             }
 
-            val modelBuffer = loadModelFile(MODEL_FILE)
+            val modelBuffer = loadModelFile(MODEL_FILE) ?: loadModelFile(ALT_MODEL_FILE)
             if (modelBuffer != null) {
                 interpreter = Interpreter(modelBuffer, options)
                 isInitialized = true
-                Log.d(TAG, "VisionClassifier ($MODEL_FILE) inicializado correctamente desde assets.")
+                Log.d(TAG, "AudioClassifier inicializado con éxito desde asset.")
             } else {
-                Log.w(TAG, "No se encontró '$MODEL_FILE' en assets. Modo fallback simulado activo.")
+                Log.w(TAG, "Archivo '$MODEL_FILE' no encontrado en assets. Operando en modo simulación.")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error inicializando TFLite VisionClassifier: ${e.message}")
+            Log.e(TAG, "Error al inicializar AudioClassifier TFLite: ${e.message}")
             isInitialized = false
         }
     }
 
-    /**
-     * Infiere sobre un recorte facial / keyframe y retorna la probabilidad de deepfake facial.
-     */
-    fun classifyFaceKeyframe(faceBitmap: Bitmap): Float {
+    fun classifySpectrogram(spectrogramBitmap: Bitmap): Float {
         if (!isInitialized || interpreter == null) {
-            return simulateInference(faceBitmap)
+            return simulateInference(spectrogramBitmap)
         }
 
         return try {
-            val inputBuffer = convertBitmapToByteBuffer(faceBitmap)
+            val inputBuffer = convertBitmapToByteBuffer(spectrogramBitmap)
             val outputBuffer = Array(1) { FloatArray(2) }
 
             interpreter?.run(inputBuffer, outputBuffer)
@@ -83,11 +80,11 @@ class VisionClassifier(private val context: Context) {
             val expReal = Math.exp(pReal.toDouble())
             val pFakeSoftmax = (expFake / (expReal + expFake)).toFloat()
 
-            Log.d(TAG, "Inferencia TFLite Visión -> FakeProb: $pFakeSoftmax")
+            Log.d(TAG, "Inferencia Audio TFLite -> Real: $pReal | Fake: $pFake | Prob: $pFakeSoftmax")
             pFakeSoftmax
         } catch (e: Exception) {
-            Log.e(TAG, "Excepción durante inferencia visual: ${e.message}")
-            simulateInference(faceBitmap)
+            Log.e(TAG, "Error durante la inferencia de audio: ${e.message}")
+            simulateInference(spectrogramBitmap)
         }
     }
 
@@ -95,7 +92,7 @@ class VisionClassifier(private val context: Context) {
         val scaled = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
         val imgData = ByteBuffer.allocateDirect(4 * INPUT_SIZE * INPUT_SIZE * PIXEL_SIZE)
         imgData.order(ByteOrder.nativeOrder())
-
+        
         val intValues = IntArray(INPUT_SIZE * INPUT_SIZE)
         scaled.getPixels(intValues, 0, scaled.width, 0, 0, scaled.width, scaled.height)
 
@@ -125,9 +122,9 @@ class VisionClassifier(private val context: Context) {
     }
 
     private fun simulateInference(bitmap: Bitmap): Float {
-        val hash = Math.abs(bitmap.hashCode())
-        val prob = ((hash % 85) + 10) / 100.0f
-        return prob.coerceIn(0.05f, 0.95f)
+        val hash = bitmap.hashCode()
+        val baseProb = (Math.abs(hash % 100) / 100.0f) * 0.7f + 0.15f
+        return baseProb.coerceIn(0.05f, 0.95f)
     }
 
     fun close() {
@@ -136,8 +133,10 @@ class VisionClassifier(private val context: Context) {
             interpreter = null
             gpuDelegate?.close()
             gpuDelegate = null
+            Log.d(TAG, "Recursos de AudioClassifier liberados.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error cerrando clasificador de visión: ${e.message}")
+            Log.e(TAG, "Error al cerrar AudioClassifier: ${e.message}")
         }
     }
 }
+

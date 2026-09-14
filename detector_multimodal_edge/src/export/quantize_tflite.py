@@ -54,8 +54,12 @@ def exportar_a_tflite_int8(modelo, pth_path, tflite_path):
     # Copiar archivo compilado a los assets de Android
     assets_dir = os.path.abspath(os.path.join(PROJECT_ROOT, "..", "android_app", "app", "src", "main", "assets"))
     os.makedirs(assets_dir, exist_ok=True)
-    shutil.copy(ts_path, os.path.join(assets_dir, os.path.basename(ts_path)))
-    print(f" -> Modelo copiado a la app Android: {assets_dir}")
+    if os.path.exists(tflite_path):
+        shutil.copy(tflite_path, os.path.join(assets_dir, os.path.basename(tflite_path)))
+        print(f" -> Modelo TFLite copiado a la app Android: {assets_dir}")
+    elif os.path.exists(ts_path):
+        shutil.copy(ts_path, os.path.join(assets_dir, os.path.basename(ts_path)))
+        print(f" -> Modelo TorchScript copiado a la app Android: {assets_dir}")
 
 def exportar_todos():
     """Ejecuta la exportación de los modelos expertos de audio y visión."""

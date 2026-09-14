@@ -23,35 +23,40 @@ proyecto_sis330/
 ├── android_app/                        # Proyecto Kotlin Android Studio
 │   ├── build.gradle.kts                # Configuración de build raíz
 │   └── app/
-│       ├── build.gradle.kts            # Configuración con namespace com.sis330.detector
+│       ├── build.gradle.kts            # Configuración de la aplicación
 │       └── src/main/
-│           ├── AndroidManifest.xml     # Configurado con Share Intents (WhatsApp/Telegram)
+│           ├── AndroidManifest.xml     # Configurado con Share Intents y Notification Service
 │           ├── assets/
 │           │   ├── experto_audio_int8.tflite  # Modelo MobileNetV3 cuantizado INT8
 │           │   └── experto_vision_int8.tflite # Modelo EfficientNet-B0 cuantizado INT8
-│           └── java/com/sis330/detector/
-│               ├── MainActivity.kt     # UI Jetpack Compose en Modo Oscuro y alertas
-│               ├── RiskScorer.kt       # Algoritmo de Score-Level Fusion + Regla 3/5
-│               └── ml/
-│                   ├── AudioClassifier.kt # Inferencia TFLite para espectrogramas Mel
-│                   └── VisionClassifier.kt# Inferencia TFLite para keyframes faciales
+│           └── java/com/detectorpreventor/app/
+│               ├── DetectorApp.kt
+│               ├── domain/             # MediaRouter y RiskScorer (Fusión y Reglas)
+│               ├── ml/                 # AudioClassifier y VisionClassifier (TFLite)
+│               ├── notifications/      # NotificationMonitorService e Interceptor WhatsApp
+│               ├── telemetry/          # Telemetría local
+│               └── ui/                 # DetectorScreen, HeatmapOverlay Grad-CAM, MainActivity
 │
-└── model_training/                     # Entorno Python (Experimentación y MLOps)
+└── detector_multimodal_edge/           # Entorno Python (Entrenamiento, Cuantización y MLOps)
     ├── environment.yml                 # Dependencias Conda (env_sis421)
     ├── data/                           # Directorio para datasets locales
-    │   └── .keep
     ├── notebooks/
     │   └── experimentos_resultados.ipynb # Matrices de Confusión, Métricas y Justificación
     └── src/
-        ├── train_expertos.py           # Código de entrenamiento en PyTorch
-        └── quantize_tflite.py          # Pipeline de Cuantización INT8 y despliegue a Android
+        ├── config.py                   # Configuración y rutas del pipeline
+        ├── models/                     # Arquitecturas MobileNetV3 y EfficientNet
+        ├── training/
+        │   ├── train_expertos.py       # Código de entrenamiento en PyTorch
+        │   └── evaluar_expertos.py     # Evaluación cuantitativa en PyTorch
+        └── export/
+            └── quantize_tflite.py      # Pipeline de Cuantización INT8 y despliegue a Android
 ```
 
 ---
 
 ## 🚀 Guía de Ejecución
 
-### 1. Entorno Python y Experimentación (`model_training/`)
+### 1. Entorno Python y Experimentación (`detector_multimodal_edge/`)
 
 El proyecto utiliza el entorno Conda `env_sis421` con PyTorch y TensorFlow Lite.
 
@@ -63,7 +68,7 @@ El proyecto utiliza el entorno Conda `env_sis421` con PyTorch y TensorFlow Lite.
 2. **Revisar el Notebook de Resultados y Métricas:**
    Abrir el notebook con Jupyter o en VS Code:
    ```bash
-   jupyter notebook model_training/notebooks/experimentos_resultados.ipynb
+   jupyter notebook detector_multimodal_edge/notebooks/experimentos_resultados.ipynb
    ```
    En él se encuentran:
    * Las **Matrices de Confusión** de ambos modelos graficadas con `seaborn` y `matplotlib`.
@@ -72,7 +77,7 @@ El proyecto utiliza el entorno Conda `env_sis421` con PyTorch y TensorFlow Lite.
 
 3. **Re-generar / Cuantizar los Modelos a TFLite INT8:**
    ```bash
-   python model_training/src/quantize_tflite.py
+   python detector_multimodal_edge/src/export/quantize_tflite.py
    ```
    *Convierte y optimiza los modelos a formato `.tflite` (INT8) y los copia automáticamente a `android_app/app/src/main/assets/`.*
 

@@ -27,7 +27,6 @@ import android.provider.Settings
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaPayload
 import com.detectorpreventor.app.domain.MediaType
-import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.notifications.InterceptedNotification
 import com.detectorpreventor.app.notifications.NotificationRepository

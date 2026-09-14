@@ -31,7 +31,7 @@ def exportar_a_tflite_int8(modelo, pth_path, tflite_path):
         return False
 
     print(f"Exportando {os.path.basename(pth_path)} -> {os.path.basename(tflite_path)}...")
-    modelo.load_state_dict(torch.load(pth_path, map_location='cpu'))
+    modelo.load_state_dict(torch.load(pth_path, map_location='cpu', weights_only=True))
     modelo.eval()
 
     sample_input = torch.randn(1, 3, 224, 224)

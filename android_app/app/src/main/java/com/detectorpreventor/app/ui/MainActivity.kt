@@ -19,7 +19,6 @@ import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaRouter
 import com.detectorpreventor.app.domain.MediaType
 import com.detectorpreventor.app.domain.ProcessedMediaPayload
-import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier

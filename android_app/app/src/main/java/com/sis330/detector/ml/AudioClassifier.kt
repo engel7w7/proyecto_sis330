@@ -1,4 +1,4 @@
-package com.detectorpreventor.app.ml
+package com.sis330.detector.ml
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -12,21 +12,22 @@ import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
 /**
- * Clasificador TFLite para el Modelo Experto de Audio (MobileNetV3-Small INT8).
- * Configurado opcionalmente con aceleración por GPU Delegate.
+ * Clasificador Edge TFLite para el Modelo Experto de Audio (MobileNetV3-Small INT8).
+ * Proyecto SIS-330: Detector Móvil Multimodal de Estafas Digitales.
  */
 class AudioClassifier(private val context: Context) {
 
     companion object {
         private const val TAG = "AudioClassifier"
-        private const val MODEL_FILE = "modelo_audio_int8.tflite"
+        private const val MODEL_FILE = "experto_audio_int8.tflite"
         private const val INPUT_SIZE = 224
         private const val PIXEL_SIZE = 3
     }
 
     private var interpreter: Interpreter? = null
     private var gpuDelegate: GpuDelegate? = null
-    private var isInitialized = false
+    var isInitialized: Boolean = false
+        private set
 
     init {
         initInterpreter()
@@ -41,26 +42,29 @@ class AudioClassifier(private val context: Context) {
                 val delegateOptions = compatList.bestOptionsForThisDevice
                 gpuDelegate = GpuDelegate(delegateOptions)
                 options.addDelegate(gpuDelegate)
-                Log.d(TAG, "GpuDelegate habilitado para AudioClassifier.")
+                Log.d(TAG, "Aceleración por GPU Delegate activada para AudioClassifier.")
             } else {
                 options.setNumThreads(4)
-                Log.d(TAG, "CPU Multi-threading (4 hilos) activado para AudioClassifier.")
+                Log.d(TAG, "Inferencia en CPU con 4 hilos activada para AudioClassifier.")
             }
 
             val modelBuffer = loadModelFile(MODEL_FILE)
             if (modelBuffer != null) {
                 interpreter = Interpreter(modelBuffer, options)
                 isInitialized = true
-                Log.d(TAG, "AudioClassifier inicializado con éxito desde asset.")
+                Log.d(TAG, "AudioClassifier ($MODEL_FILE) inicializado correctamente desde assets.")
             } else {
-                Log.w(TAG, "Archivo '$MODEL_FILE' no encontrado en assets. Operando en modo simulación.")
+                Log.w(TAG, "No se encontró '$MODEL_FILE' en assets. Modo fallback simulado activo.")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error al inicializar AudioClassifier TFLite: ${e.message}")
+            Log.e(TAG, "Error inicializando TFLite AudioClassifier: ${e.message}")
             isInitialized = false
         }
     }
 
+    /**
+     * Ejecuta inferencia sobre el espectrograma Mel de audio y retorna la probabilidad de estafa/clonación.
+     */
     fun classifySpectrogram(spectrogramBitmap: Bitmap): Float {
         if (!isInitialized || interpreter == null) {
             return simulateInference(spectrogramBitmap)
@@ -75,14 +79,15 @@ class AudioClassifier(private val context: Context) {
             val pReal = outputBuffer[0][0]
             val pFake = outputBuffer[0][1]
 
+            // Softmax para obtener la probabilidad de clase 1 (Clonado/Fraude)
             val expFake = Math.exp(pFake.toDouble())
             val expReal = Math.exp(pReal.toDouble())
             val pFakeSoftmax = (expFake / (expReal + expFake)).toFloat()
 
-            Log.d(TAG, "Inferencia Audio TFLite -> Real: $pReal | Fake: $pFake | Prob: $pFakeSoftmax")
+            Log.d(TAG, "Inferencia TFLite Audio -> FakeProb: $pFakeSoftmax")
             pFakeSoftmax
         } catch (e: Exception) {
-            Log.e(TAG, "Error durante la inferencia de audio: ${e.message}")
+            Log.e(TAG, "Excepción durante inferencia de audio: ${e.message}")
             simulateInference(spectrogramBitmap)
         }
     }
@@ -91,7 +96,7 @@ class AudioClassifier(private val context: Context) {
         val scaled = Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
         val imgData = ByteBuffer.allocateDirect(4 * INPUT_SIZE * INPUT_SIZE * PIXEL_SIZE)
         imgData.order(ByteOrder.nativeOrder())
-        
+
         val intValues = IntArray(INPUT_SIZE * INPUT_SIZE)
         scaled.getPixels(intValues, 0, scaled.width, 0, 0, scaled.width, scaled.height)
 
@@ -121,9 +126,9 @@ class AudioClassifier(private val context: Context) {
     }
 
     private fun simulateInference(bitmap: Bitmap): Float {
-        val hash = bitmap.hashCode()
-        val baseProb = (Math.abs(hash % 100) / 100.0f) * 0.7f + 0.15f
-        return baseProb.coerceIn(0.05f, 0.95f)
+        val hash = Math.abs(bitmap.hashCode())
+        val prob = ((hash % 80) + 15) / 100.0f
+        return prob.coerceIn(0.10f, 0.95f)
     }
 
     fun close() {
@@ -132,10 +137,8 @@ class AudioClassifier(private val context: Context) {
             interpreter = null
             gpuDelegate?.close()
             gpuDelegate = null
-            Log.d(TAG, "Recursos de AudioClassifier liberados.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error al cerrar AudioClassifier: ${e.message}")
+            Log.e(TAG, "Error cerrando clasificador de audio: ${e.message}")
         }
     }
 }
-

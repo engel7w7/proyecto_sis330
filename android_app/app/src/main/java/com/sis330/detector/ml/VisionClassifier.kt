@@ -1,4 +1,4 @@
-package com.detectorpreventor.app.ml
+package com.sis330.detector.ml
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -12,21 +12,22 @@ import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
 /**
- * Clasificador TFLite para el Modelo Experto de Visión (EfficientNet-B0 INT8).
- * Configurado opcionalmente con aceleración por GPU Delegate.
+ * Clasificador Edge TFLite para el Modelo Experto de Visión (EfficientNet-B0 INT8).
+ * Proyecto SIS-330: Detector Móvil Multimodal de Estafas Digitales.
  */
 class VisionClassifier(private val context: Context) {
 
     companion object {
         private const val TAG = "VisionClassifier"
-        private const val MODEL_FILE = "modelo_vision_int8.tflite"
+        private const val MODEL_FILE = "experto_vision_int8.tflite"
         private const val INPUT_SIZE = 224
         private const val PIXEL_SIZE = 3
     }
 
     private var interpreter: Interpreter? = null
     private var gpuDelegate: GpuDelegate? = null
-    private var isInitialized = false
+    var isInitialized: Boolean = false
+        private set
 
     init {
         initInterpreter()
@@ -41,26 +42,29 @@ class VisionClassifier(private val context: Context) {
                 val delegateOptions = compatList.bestOptionsForThisDevice
                 gpuDelegate = GpuDelegate(delegateOptions)
                 options.addDelegate(gpuDelegate)
-                Log.d(TAG, "GpuDelegate habilitado para VisionClassifier.")
+                Log.d(TAG, "Aceleración por GPU Delegate activada para VisionClassifier.")
             } else {
                 options.setNumThreads(4)
-                Log.d(TAG, "CPU Multi-threading (4 hilos) activado para VisionClassifier.")
+                Log.d(TAG, "Inferencia en CPU con 4 hilos activada para VisionClassifier.")
             }
 
             val modelBuffer = loadModelFile(MODEL_FILE)
             if (modelBuffer != null) {
                 interpreter = Interpreter(modelBuffer, options)
                 isInitialized = true
-                Log.d(TAG, "VisionClassifier inicializado con éxito desde asset.")
+                Log.d(TAG, "VisionClassifier ($MODEL_FILE) inicializado correctamente desde assets.")
             } else {
-                Log.w(TAG, "Archivo '$MODEL_FILE' no encontrado en assets. Operando en modo simulación.")
+                Log.w(TAG, "No se encontró '$MODEL_FILE' en assets. Modo fallback simulado activo.")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error al inicializar VisionClassifier TFLite: ${e.message}")
+            Log.e(TAG, "Error inicializando TFLite VisionClassifier: ${e.message}")
             isInitialized = false
         }
     }
 
+    /**
+     * Infiere sobre un recorte facial / keyframe y retorna la probabilidad de deepfake facial.
+     */
     fun classifyFaceKeyframe(faceBitmap: Bitmap): Float {
         if (!isInitialized || interpreter == null) {
             return simulateInference(faceBitmap)
@@ -79,10 +83,10 @@ class VisionClassifier(private val context: Context) {
             val expReal = Math.exp(pReal.toDouble())
             val pFakeSoftmax = (expFake / (expReal + expFake)).toFloat()
 
-            Log.d(TAG, "Inferencia Visión TFLite -> Real: $pReal | Fake: $pFake | Prob: $pFakeSoftmax")
+            Log.d(TAG, "Inferencia TFLite Visión -> FakeProb: $pFakeSoftmax")
             pFakeSoftmax
         } catch (e: Exception) {
-            Log.e(TAG, "Error durante inferencia visual: ${e.message}")
+            Log.e(TAG, "Excepción durante inferencia visual: ${e.message}")
             simulateInference(faceBitmap)
         }
     }
@@ -121,9 +125,9 @@ class VisionClassifier(private val context: Context) {
     }
 
     private fun simulateInference(bitmap: Bitmap): Float {
-        val hash = bitmap.hashCode()
-        val baseProb = (Math.abs(hash % 100) / 100.0f) * 0.8f + 0.1f
-        return baseProb.coerceIn(0.05f, 0.95f)
+        val hash = Math.abs(bitmap.hashCode())
+        val prob = ((hash % 85) + 10) / 100.0f
+        return prob.coerceIn(0.05f, 0.95f)
     }
 
     fun close() {
@@ -132,10 +136,8 @@ class VisionClassifier(private val context: Context) {
             interpreter = null
             gpuDelegate?.close()
             gpuDelegate = null
-            Log.d(TAG, "Recursos de VisionClassifier liberados.")
         } catch (e: Exception) {
-            Log.e(TAG, "Error al cerrar VisionClassifier: ${e.message}")
+            Log.e(TAG, "Error cerrando clasificador de visión: ${e.message}")
         }
     }
 }
-

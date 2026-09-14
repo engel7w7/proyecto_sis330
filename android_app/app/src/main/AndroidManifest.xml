@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -9,21 +9,20 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:name=".DetectorApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@android:drawable/sym_def_app_icon"
-        android:label="Detector Preventor"
+        android:label="SIS-330 Detector Preventor"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-        
+
         <activity
-            android:name=".ui.MainActivity"
+            android:name="com.sis330.detector.MainActivity"
             android:exported="true"
-            android:label="Detector Preventor"
+            android:label="SIS-330 Detector Preventor"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-            
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

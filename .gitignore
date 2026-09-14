@@ -1,5 +1,6 @@
 # Exclusión de Datasets (en cualquier subcarpeta)
-**/data/
+**/data/*
+!**/data/.keep
 **/datasets/
 **/dataset_50k/
 **/ASVspoof/
@@ -12,10 +13,10 @@
 *.7z
 
 !*.pth
-!*.pt
 !*.tflite
-!detector_multimodal_edge/src/checkpoints/
 !android_app/app/src/main/assets/
+!model_training/data/.keep
+!model_training/models/saved/
 
 # Python Cache y Entornos
 __pycache__/
@@ -48,7 +49,7 @@ captures/
 .cxx/
 local.properties
 
-# Archivos de Sistema y HTML
+# Archivos de Sistema y Temporales
 .DS_Store
 Thumbs.db
 desktop.ini

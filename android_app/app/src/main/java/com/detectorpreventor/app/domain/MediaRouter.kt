@@ -39,6 +39,44 @@ class MediaRouter(private val context: Context) {
     }
 
     suspend fun processIncomingUri(uri: Uri, mimeType: String?): ProcessedMediaPayload = withContext(Dispatchers.IO) {
+        val uriStr = uri.toString()
+        if (uriStr.startsWith("content://com.detectorpreventor.app.samples/")) {
+            val parts = uri.pathSegments
+            val sampleType = if (parts.isNotEmpty()) parts[0] else "audio"
+            val index = if (parts.size > 1) parts[1].toIntOrNull() ?: 1 else 1
+
+            return@withContext when (sampleType) {
+                "audio" -> {
+                    val asset = if (index % 2 != 0) "samples/audio_real_spec.png" else "samples/audio_fake_spec.png"
+                    val bitmap = loadBitmapFromAsset(asset) ?: generateSpectrogramFromAudio(uri)
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.AUDIO_ONLY,
+                        audioSpectrogram = bitmap,
+                        filename = getFileNameFromUri(uri)
+                    )
+                }
+                "image" -> {
+                    val asset = if (index % 2 != 0) "samples/image_real_face.jpg" else "samples/image_fake_face.jpg"
+                    val bitmap = loadBitmapFromAsset(asset) ?: loadBitmapFromAsset("samples/image_fake_face.jpg")
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.IMAGE_ONLY,
+                        faceKeyframe = bitmap,
+                        filename = getFileNameFromUri(uri)
+                    )
+                }
+                else -> {
+                    val faceAsset = if (index % 2 != 0) "samples/image_real_face.jpg" else "samples/image_fake_face.jpg"
+                    val audioAsset = if (index % 2 != 0) "samples/audio_real_spec.png" else "samples/audio_fake_spec.png"
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.VIDEO_MULTIMODAL,
+                        audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: generateSpectrogramFromAudio(uri),
+                        faceKeyframe = loadBitmapFromAsset(faceAsset) ?: loadBitmapFromAsset("samples/image_fake_face.jpg"),
+                        filename = getFileNameFromUri(uri)
+                    )
+                }
+            }
+        }
+
         val detectedType = resolveMediaType(uri, mimeType)
         Log.d(TAG, "Procesando Uri: $uri | Mime: $mimeType | Tipo Detectado: $detectedType")
 
@@ -70,8 +108,8 @@ class MediaRouter(private val context: Context) {
                 )
             }
             MediaType.UNKNOWN -> {
-                val dummySpectrogram = generatePlaceholderBitmap("Audio Generado")
-                val dummyFace = generatePlaceholderBitmap("Rostro Extraído")
+                val dummySpectrogram = loadBitmapFromAsset("samples/audio_fake_spec.png") ?: createSyntheticSpectrogramBitmap()
+                val dummyFace = loadBitmapFromAsset("samples/image_fake_face.jpg") ?: createSyntheticFaceBitmap("Rostro Extraído")
                 ProcessedMediaPayload(
                     mediaType = MediaType.VIDEO_MULTIMODAL,
                     audioSpectrogram = dummySpectrogram,
@@ -79,6 +117,17 @@ class MediaRouter(private val context: Context) {
                     filename = "media_desconocida"
                 )
             }
+        }
+    }
+
+    private fun loadBitmapFromAsset(assetPath: String): Bitmap? {
+        return try {
+            context.assets.open(assetPath).use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cargando asset $assetPath: ${e.message}")
+            null
         }
     }
 

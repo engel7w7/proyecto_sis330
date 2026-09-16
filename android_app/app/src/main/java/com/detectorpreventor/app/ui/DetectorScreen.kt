@@ -49,11 +49,12 @@ sealed class ScreenNav(val route: String, val title: String, val icon: ImageVect
 fun DetectorScreen(
     payload: MediaPayload?,
     fusionResult: FusionResult?,
+    activeScreen: ScreenNav = ScreenNav.Scanner,
+    onScreenChange: (ScreenNav) -> Unit = {},
     onSelectFile: () -> Unit,
     onAnalyzeSample: (String, Int) -> Unit,
     onInspectNotification: (InterceptedNotification) -> Unit = {}
 ) {
-    var currentScreen by remember { mutableStateOf<ScreenNav>(ScreenNav.Scanner) }
     var isHeatmapEnabled by remember { mutableStateOf(true) }
 
     val navItems = listOf(
@@ -71,10 +72,10 @@ fun DetectorScreen(
                 tonalElevation = 8.dp
             ) {
                 navItems.forEach { screen ->
-                    val isSelected = currentScreen == screen
+                    val isSelected = activeScreen == screen
                     NavigationBarItem(
                         selected = isSelected,
-                        onClick = { currentScreen = screen },
+                        onClick = { onScreenChange(screen) },
                         icon = {
                             Icon(
                                 imageVector = screen.icon,
@@ -105,29 +106,29 @@ fun DetectorScreen(
                 .padding(innerPadding)
                 .background(BackgroundDark)
         ) {
-            when (currentScreen) {
+            when (activeScreen) {
                 is ScreenNav.Scanner -> ScannerView(
                     payload = payload,
                     fusionResult = fusionResult,
                     isHeatmapEnabled = isHeatmapEnabled,
                     onToggleHeatmap = { isHeatmapEnabled = it },
-                    onNavigateToUpload = { currentScreen = ScreenNav.Upload }
+                    onNavigateToUpload = { onScreenChange(ScreenNav.Upload) }
                 )
                 is ScreenNav.Upload -> UploadView(
                     payload = payload,
                     onSelectFile = onSelectFile,
-                    onNavigateToScanner = { currentScreen = ScreenNav.Scanner }
+                    onNavigateToScanner = { onScreenChange(ScreenNav.Scanner) }
                 )
                 is ScreenNav.Notifications -> NotificationsView(
                     onInspectNotification = { notif ->
                         onInspectNotification(notif)
-                        currentScreen = ScreenNav.Scanner
+                        onScreenChange(ScreenNav.Scanner)
                     }
                 )
                 is ScreenNav.Benchmark -> BenchmarkView(
                     onAnalyzeSample = { type, idx ->
                         onAnalyzeSample(type, idx)
-                        currentScreen = ScreenNav.Scanner
+                        onScreenChange(ScreenNav.Scanner)
                     }
                 )
                 is ScreenNav.SystemInfo -> SystemInfoView()

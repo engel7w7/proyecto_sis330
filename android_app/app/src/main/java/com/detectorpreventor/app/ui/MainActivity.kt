@@ -46,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     private var currentPayload by mutableStateOf<ProcessedMediaPayload?>(null)
     private var currentFusionResult by mutableStateOf<FusionResult?>(null)
+    private var activeScreen by mutableStateOf<ScreenNav>(ScreenNav.Scanner)
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -76,6 +77,8 @@ class MainActivity : ComponentActivity() {
                     DetectorScreen(
                         payload = currentPayload,
                         fusionResult = currentFusionResult,
+                        activeScreen = activeScreen,
+                        onScreenChange = { activeScreen = it },
                         onSelectFile = {
                             filePickerLauncher.launch("*/*")
                         },
@@ -102,6 +105,24 @@ class MainActivity : ComponentActivity() {
 
         Log.d(TAG, "Intent Recibido -> Acción: $action | Tipo MIME: $type")
 
+        val screenExtra = intent.getStringExtra("screen")
+        if (!screenExtra.isNullOrBlank()) {
+            activeScreen = when (screenExtra.lowercase()) {
+                "upload" -> ScreenNav.Upload
+                "notifications", "whatsapp" -> ScreenNav.Notifications
+                "benchmark", "dataset" -> ScreenNav.Benchmark
+                "info", "mlops" -> ScreenNav.SystemInfo
+                else -> ScreenNav.Scanner
+            }
+        }
+
+        val sampleType = intent.getStringExtra("sample_type")
+        val sampleIndex = intent.getIntExtra("sample_index", -1)
+        if (!sampleType.isNullOrBlank() && sampleIndex > 0) {
+            runSampleAnalysis(sampleType, sampleIndex)
+            return
+        }
+
         val mediaUri: Uri? = when (action) {
             Intent.ACTION_SEND -> {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -118,7 +139,7 @@ class MainActivity : ComponentActivity() {
         if (mediaUri != null) {
             val name = getFileNameFromUri(mediaUri)
             processMediaUri(mediaUri, type, name)
-        } else {
+        } else if (currentPayload == null) {
             runSampleAnalysis("audio", 1)
         }
     }

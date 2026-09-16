@@ -160,7 +160,7 @@ fun ScannerView(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Detector Preventor",
                     color = TextPrimary,
@@ -168,31 +168,53 @@ fun ScannerView(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Protección Multimodal Edge AI contra Fraud",
+                    text = "Protección Multimodal Edge AI contra Fraude",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .background(PrimaryIndigo.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Offline",
-                        tint = PrimaryIndigo,
-                        modifier = Modifier.height(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                Box(
+                    modifier = Modifier
+                        .background(AccentCyan.copy(alpha = 0.15f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                ) {
                     Text(
-                        text = "100% Offline",
-                        color = PrimaryIndigo,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = "INT8",
+                        color = AccentCyan,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
                     )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .background(PrimaryIndigo.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Offline",
+                            tint = PrimaryIndigo,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Offline",
+                            color = PrimaryIndigo,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
@@ -540,7 +562,15 @@ fun BenchmarkView(
             FilterChip(
                 selected = selectedCategory == "audio",
                 onClick = { selectedCategory = "audio" },
-                label = { Text("🎙️ Audio (5)", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = if (selectedCategory == "audio") Color.White else PrimaryIndigo
+                    )
+                },
+                label = { Text("Audio (5)", fontSize = 12.sp) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryIndigo,
                     selectedLabelColor = Color.White
@@ -550,7 +580,15 @@ fun BenchmarkView(
             FilterChip(
                 selected = selectedCategory == "image",
                 onClick = { selectedCategory = "image" },
-                label = { Text("👁️ Imagen (5)", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = if (selectedCategory == "image") Color.White else PrimaryIndigo
+                    )
+                },
+                label = { Text("Imagen (5)", fontSize = 12.sp) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryIndigo,
                     selectedLabelColor = Color.White
@@ -560,7 +598,15 @@ fun BenchmarkView(
             FilterChip(
                 selected = selectedCategory == "video",
                 onClick = { selectedCategory = "video" },
-                label = { Text("🎬 Video (5)", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Videocam,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = if (selectedCategory == "video") Color.White else PrimaryIndigo
+                    )
+                },
+                label = { Text("Video (5)", fontSize = 12.sp) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryIndigo,
                     selectedLabelColor = Color.White
@@ -596,12 +642,17 @@ fun BenchmarkView(
         }
 
         samples.forEachIndexed { idx, item ->
+            val isHighRisk = item.second.contains("ALTO RIESGO")
+            val sampleBadgeColor = if (isHighRisk) RiskHighRed else RiskLowGreen
+            val sampleBadgeText = if (isHighRisk) "AMENAZA" else "AUTÉNTICO"
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
+                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
                     .clickable { onAnalyzeSample(selectedCategory, idx + 1) }
             ) {
                 Row(
@@ -612,12 +663,28 @@ fun BenchmarkView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = item.first,
-                            color = TextPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .background(sampleBadgeColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                    .border(1.dp, sampleBadgeColor.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = sampleBadgeText,
+                                    color = sampleBadgeColor,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = item.first,
+                                color = TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = item.second,
@@ -632,9 +699,16 @@ fun BenchmarkView(
                         onClick = { onAnalyzeSample(selectedCategory, idx + 1) },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
                         shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Text("Probar", fontSize = 11.sp, color = Color.White)
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Analizar", fontSize = 11.sp, color = Color.White)
                     }
                 }
             }
@@ -673,12 +747,21 @@ fun SystemInfoView() {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "🤖 Modelos Experto Cuantizados (Assets Locales)",
-                    color = PrimaryIndigo,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Memory,
+                        contentDescription = null,
+                        tint = PrimaryIndigo,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Modelos Expertos Cuantizados (Assets Locales)",
+                        color = PrimaryIndigo,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("• Experto Audio: MobileNetV3-Small INT8 (6.2 MB)", fontSize = 12.sp, color = TextPrimary)
                 Text("• Experto Visión: EfficientNet-B0 INT8 (16.0 MB)", fontSize = 12.sp, color = TextPrimary)
@@ -695,12 +778,21 @@ fun SystemInfoView() {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "📊 Resultados Oficiales de Entrenamiento (GPU CUDA)",
-                    color = PrimaryIndigo,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Analytics,
+                        contentDescription = null,
+                        tint = PrimaryIndigo,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Resultados Oficiales de Entrenamiento (GPU CUDA)",
+                        color = PrimaryIndigo,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("• Muestras Totales de Entrenamiento: 123,303 muestras", fontSize = 12.sp, color = TextPrimary)
                 Text("• Precisión Experto Visión: 97.17% Accuracy | 95.82% F1-Score", fontSize = 12.sp, color = TextPrimary)
@@ -851,12 +943,22 @@ fun NotificationsView(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "🧪 Simulador de Amenazas (Prueba Inmediata)",
-                    color = PrimaryIndigo,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = PrimaryIndigo,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Simulador de Amenazas de Fraude",
+                        color = PrimaryIndigo,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Prueba la reacción del sistema simulando la llegada de mensajes multimedia:",
                     color = TextSecondary,
@@ -882,7 +984,7 @@ fun NotificationsView(
                                 fusionResult = fusion
                             )
                         )
-                        Toast.makeText(context, "🚨 Alerta: Nota de voz sospechosa interceptada", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Alerta de seguridad: Audio sospechoso interceptado", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RiskHighRed.copy(alpha = 0.85f)),
                     shape = RoundedCornerShape(8.dp),
@@ -890,7 +992,7 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("🚨 Simular Audio WhatsApp Falso (94% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Audio de Voz Manipulado (94% Riesgo)", fontSize = 12.sp, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -912,7 +1014,7 @@ fun NotificationsView(
                                 fusionResult = fusion
                             )
                         )
-                        Toast.makeText(context, "🚨 Alerta: Imagen FaceSwap detectada", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Alerta de seguridad: Imagen alterada (FaceSwap) detectada", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
                     shape = RoundedCornerShape(8.dp),
@@ -920,7 +1022,7 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.Image, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("📷 Simular Imagen WhatsApp FaceSwap (97% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Imagen Facial Alterada (97% Riesgo)", fontSize = 12.sp, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -942,7 +1044,7 @@ fun NotificationsView(
                                 fusionResult = fusion
                             )
                         )
-                        Toast.makeText(context, "✅ Nota de voz auténtica verificada", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Verificación: Audio legítimo autenticado", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                     shape = RoundedCornerShape(8.dp),
@@ -950,7 +1052,7 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("✅ Simular Audio WhatsApp Seguro (5% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Audio de Voz Auténtico (5% Riesgo)", fontSize = 12.sp, color = Color.White)
                 }
             }
         }
@@ -1100,7 +1202,14 @@ fun NotificationsView(
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                 modifier = Modifier.height(30.dp)
                             ) {
-                                Text("Ver Escáner", fontSize = 10.sp, color = Color.White)
+                                Icon(
+                                    imageVector = Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Inspeccionar", fontSize = 10.sp, color = Color.White)
                             }
                         }
                     }

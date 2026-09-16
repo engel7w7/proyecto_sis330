@@ -104,10 +104,10 @@ class MediaRouter(private val context: Context) {
             inputStream?.close()
             
             original?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
-                ?: generatePlaceholderBitmap("Rostro Imagen")
+                ?: createSyntheticFaceBitmap("Rostro Imagen")
         } catch (e: Exception) {
             Log.e(TAG, "Error al extraer imagen desde Uri: ${e.message}")
-            generatePlaceholderBitmap("Rostro Imagen")
+            createSyntheticFaceBitmap("Rostro Imagen")
         }
     }
 
@@ -117,10 +117,10 @@ class MediaRouter(private val context: Context) {
             retriever.setDataSource(context, uri)
             val frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             frame?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
-                ?: generatePlaceholderBitmap("Rostro Video")
+                ?: createSyntheticFaceBitmap("Rostro Video")
         } catch (e: Exception) {
             Log.e(TAG, "Error al extraer fotograma del video: ${e.message}")
-            generatePlaceholderBitmap("Rostro Video")
+            createSyntheticFaceBitmap("Rostro Video")
         } finally {
             try { retriever.release() } catch (_: Exception) {}
         }
@@ -145,6 +145,43 @@ class MediaRouter(private val context: Context) {
                 canvas.drawRect(x.toFloat(), y.toFloat(), (x + 4).toFloat(), (y + 4).toFloat(), paint)
             }
         }
+        return bitmap
+    }
+
+    private fun createSyntheticFaceBitmap(label: String): Bitmap {
+        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint()
+
+        canvas.drawColor(Color.rgb(15, 23, 42))
+
+        paint.color = Color.argb(45, 56, 189, 248)
+        paint.strokeWidth = 1f
+        for (i in 0..224 step 28) {
+            canvas.drawLine(i.toFloat(), 0f, i.toFloat(), 224f, paint)
+            canvas.drawLine(0f, i.toFloat(), 224f, i.toFloat(), paint)
+        }
+
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.rgb(239, 68, 68)
+        paint.strokeWidth = 2f
+        canvas.drawRect(52f, 36f, 172f, 170f, paint)
+
+        paint.color = Color.rgb(99, 102, 241)
+        paint.strokeWidth = 2.5f
+        canvas.drawOval(66f, 48f, 158f, 156f, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(56, 189, 248)
+        canvas.drawCircle(94f, 92f, 5f, paint)
+        canvas.drawCircle(130f, 92f, 5f, paint)
+        paint.strokeWidth = 2f
+        canvas.drawLine(98f, 130f, 126f, 130f, paint)
+
+        paint.color = Color.WHITE
+        paint.textSize = 13f
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText(label, 112f, 202f, paint)
         return bitmap
     }
 

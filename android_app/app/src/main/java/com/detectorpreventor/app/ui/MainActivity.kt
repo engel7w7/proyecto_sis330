@@ -24,6 +24,7 @@ import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
 import com.detectorpreventor.app.telemetry.FirebaseTelemetryManager
 import com.detectorpreventor.app.notifications.InterceptedNotification
+import com.detectorpreventor.app.notifications.NotificationMonitorService
 import com.detectorpreventor.app.ui.theme.BackgroundDark
 import com.detectorpreventor.app.ui.theme.DetectorPreventorTheme
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +93,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        NotificationMonitorService.ensureServiceBound(this)
     }
 
     override fun onNewIntent(intent: Intent?) {

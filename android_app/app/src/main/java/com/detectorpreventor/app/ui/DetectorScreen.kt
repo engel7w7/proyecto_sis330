@@ -29,6 +29,7 @@ import com.detectorpreventor.app.domain.MediaPayload
 import com.detectorpreventor.app.domain.MediaType
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.notifications.InterceptedNotification
+import com.detectorpreventor.app.notifications.NotificationMonitorService
 import com.detectorpreventor.app.notifications.NotificationRepository
 import com.detectorpreventor.app.ui.theme.*
 import java.util.UUID
@@ -814,6 +815,20 @@ fun NotificationsView(
     val context = LocalContext.current
     val notifications by NotificationRepository.notifications.collectAsState()
     val isMonitoringActive by NotificationRepository.isMonitoringActive.collectAsState()
+    val isServiceConnected by NotificationRepository.isServiceConnected.collectAsState()
+    var isPermissionGranted by remember { mutableStateOf(NotificationRepository.isPermissionGranted(context)) }
+
+    DisposableEffect(Unit) {
+        isPermissionGranted = NotificationRepository.isPermissionGranted(context)
+        onDispose { }
+    }
+
+    val (statusLabel, statusColor) = when {
+        !isPermissionGranted -> Pair("PERMISO REQUERIDO", RiskHighRed)
+        !isServiceConnected -> Pair("DESVINCULADO POR EL SO", Color(0xFFEAB308))
+        !isMonitoringActive -> Pair("MONITOREO EN PAUSA", Color(0xFF94A3B8))
+        else -> Pair("ACTIVO Y ESCUCHANDO", RiskLowGreen)
+    }
 
     Column(
         modifier = Modifier
@@ -821,13 +836,13 @@ fun NotificationsView(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // Título y Estado
+        // Titulo y Estado Real
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Monitoreo WhatsApp",
                     color = TextPrimary,
@@ -835,7 +850,7 @@ fun NotificationsView(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Interceptación y Análisis Automático de Mensajería",
+                    text = "Interceptacion y Analisis Automatico de Mensajeria",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -844,7 +859,7 @@ fun NotificationsView(
             Box(
                 modifier = Modifier
                     .background(
-                        if (isMonitoringActive) RiskLowGreen.copy(alpha = 0.2f) else RiskHighRed.copy(alpha = 0.2f),
+                        statusColor.copy(alpha = 0.2f),
                         RoundedCornerShape(20.dp)
                     )
                     .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -854,14 +869,14 @@ fun NotificationsView(
                         modifier = Modifier
                             .size(8.dp)
                             .background(
-                                if (isMonitoringActive) RiskLowGreen else RiskHighRed,
+                                statusColor,
                                 CircleShape
                             )
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isMonitoringActive) "ACTIVO" else "PAUSADO",
-                        color = if (isMonitoringActive) RiskLowGreen else RiskHighRed,
+                        text = statusLabel,
+                        color = statusColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -892,7 +907,7 @@ fun NotificationsView(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Intercepta notas de voz (.opus, .mp3) y fotos entrantes de WhatsApp o Telegram para clasificarlas con Edge AI.",
+                            text = "Intercepta notas de voz (.opus, .mp3) y fotos de WhatsApp o Telegram para verificarlas con Edge AI.",
                             color = TextSecondary,
                             fontSize = 11.sp,
                             lineHeight = 15.sp
@@ -910,6 +925,68 @@ fun NotificationsView(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                if (!isPermissionGranted) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(RiskHighRed.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .border(1.dp, RiskHighRed.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = RiskHighRed, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Permiso de Android no otorgado. La aplicacion no puede leer notificaciones hasta habilitarlo.",
+                                color = TextPrimary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                } else if (!isServiceConnected) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFEAB308).copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFFEAB308).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFEAB308), modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "El sistema Android desvinculo el servicio en reposo. Pulsa 'Reconectar Servicio' para reactivarlo.",
+                                color = TextPrimary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                Button(
+                    onClick = {
+                        NotificationMonitorService.ensureServiceBound(context)
+                        isPermissionGranted = NotificationRepository.isPermissionGranted(context)
+                        Toast.makeText(context, "Re-vinculando servicio de escucha con el SO...", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Reconectar Servicio con el SO", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(
                     onClick = {
@@ -930,7 +1007,32 @@ fun NotificationsView(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Configurar Permiso de Acceso en Android", fontSize = 12.sp, color = AccentCyan)
+                    Text("Abrir Ajustes de Acceso a Notificaciones", fontSize = 12.sp, color = AccentCyan)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "Ajuste para Xiaomi / HyperOS / Samsung:",
+                            color = AccentCyan,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "En Ajustes > Apps > Detector Preventor > Bateria, elige 'Sin restricciones' e 'Inicio automatico' para impedir que el sistema suspenda el escuchador en reposo.",
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
                 }
             }
         }

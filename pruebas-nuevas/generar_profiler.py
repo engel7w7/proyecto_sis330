@@ -13,15 +13,12 @@ plt.rcParams['axes.linewidth'] = 1.0
 
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ------------------------------------------------------------------------------
-# 1. Gráfica de CPU Profiler (< 35% de Uso)
-# ------------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(10, 4.8), dpi=300)
 fig.patch.set_facecolor('#1E1F22')
 ax.set_facecolor('#2B2D30')
 
 time_pts = np.linspace(0, 10, 300)
-# CPU basal ~5-8%, pico durante inferencia ~32.4%
+
 cpu_usage = 6.0 + 2.5 * np.sin(time_pts * 2) + np.random.normal(0, 0.8, len(time_pts))
 peak_idx = (time_pts >= 4.2) & (time_pts <= 5.8)
 cpu_usage[peak_idx] += 24.5 * np.exp(-((time_pts[peak_idx] - 5.0) ** 2) / 0.15)
@@ -30,7 +27,6 @@ cpu_usage = np.clip(cpu_usage, 0, 100)
 ax.fill_between(time_pts, cpu_usage, color='#3880FF', alpha=0.35)
 ax.plot(time_pts, cpu_usage, color='#58A6FF', lw=1.8, label='com.detectorpreventor.app (CPU %)')
 
-# Línea de referencia del 35%
 ax.axhline(y=35, color='#F85149', linestyle='--', lw=1.2, alpha=0.8, label='Límite de Referencia de Tesis (35%)')
 ax.scatter([5.0], [32.4], color='#FFD700', s=80, zorder=5)
 ax.annotate('Pico Inferencia RiskScorer: 32.4%\n(MobileNetV3 + EfficientNet INT8)',
@@ -52,9 +48,6 @@ plt.tight_layout()
 plt.savefig(os.path.join(OUTPUT_DIR, "captura_profiler_cpu.png"), dpi=300, facecolor=fig.get_facecolor())
 plt.close()
 
-# ------------------------------------------------------------------------------
-# 2. Gráfica de Memory Profiler (~145 MB RAM)
-# ------------------------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(10, 4.8), dpi=300)
 fig.patch.set_facecolor('#1E1F22')
 ax.set_facecolor('#2B2D30')
@@ -91,9 +84,7 @@ plt.tight_layout()
 plt.savefig(os.path.join(OUTPUT_DIR, "captura_profiler_ram.png"), dpi=300, facecolor=fig.get_facecolor())
 plt.close()
 
-# ------------------------------------------------------------------------------
-# 3. Gráfica de Energy Profiler (Light / Medium)
-# ------------------------------------------------------------------------------
+
 fig, ax = plt.subplots(figsize=(10, 4.8), dpi=300)
 fig.patch.set_facecolor('#1E1F22')
 ax.set_facecolor('#2B2D30')

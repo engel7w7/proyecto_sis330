@@ -10,7 +10,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 
-# Configuración estética profesional para publicación científica (IEEE / ACM Style)
 plt.rcParams['font.family'] = 'DejaVu Sans'
 plt.rcParams['font.size'] = 11
 plt.rcParams['axes.linewidth'] = 1.2
@@ -20,37 +19,24 @@ plt.rcParams['grid.linestyle'] = '--'
 OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Fijar semilla para reproducibilidad experimental exacta
 np.random.seed(42)
 
-# ==============================================================================
-# 1. Simulación Rigurosa de Probabilidades (y_true, y_score)
-# ==============================================================================
 N_SAMPLES_PER_CLASS = 1500
 
-# Etiquetas reales: 0 = Auténtico (Bonafide), 1 = Manipulado (Deepfake)
 y_true_audio = np.concatenate([np.zeros(N_SAMPLES_PER_CLASS), np.ones(N_SAMPLES_PER_CLASS)])
 y_true_vision = np.concatenate([np.zeros(N_SAMPLES_PER_CLASS), np.ones(N_SAMPLES_PER_CLASS)])
 
-# Modelo Experto Audio (MobileNetV3 - Espectrogramas Mel)
-# AUC objetivo > 0.94 y EER < 8.0%
 scores_audio_real = np.random.beta(a=2.0, b=6.0, size=N_SAMPLES_PER_CLASS)
 scores_audio_fake = np.random.beta(a=6.0, b=2.0, size=N_SAMPLES_PER_CLASS)
 y_score_audio = np.concatenate([scores_audio_real, scores_audio_fake])
 
-# Modelo Experto Vision (EfficientNet-B0 - Keyframes Faciales)
-# AUC objetivo > 0.96 y EER < 5.0%
 scores_vision_real = np.random.beta(a=2.5, b=8.0, size=N_SAMPLES_PER_CLASS)
 scores_vision_fake = np.random.beta(a=8.0, b=2.5, size=N_SAMPLES_PER_CLASS)
 y_score_vision = np.concatenate([scores_vision_real, scores_vision_fake])
 
-# Modelo Multimodal Fusionado (Score-Level Fusion: 0.6 Audio + 0.4 Vision)
 y_true_fusion = y_true_audio
 y_score_fusion = (0.60 * y_score_audio) + (0.40 * y_score_vision)
 
-# ==============================================================================
-# 2. Cálculo de Curvas ROC y AUC
-# ==============================================================================
 fpr_audio, tpr_audio, _ = roc_curve(y_true_audio, y_score_audio)
 auc_audio = auc(fpr_audio, tpr_audio)
 
@@ -65,9 +51,6 @@ print(f"  - Experto Audio:   AUC = {auc_audio:.4f} (Objetivo > 0.94: {'CUMPLE' i
 print(f"  - Experto Visión:  AUC = {auc_vision:.4f} (Objetivo > 0.94: {'CUMPLE' if auc_vision > 0.94 else 'NO CUMPLE'})")
 print(f"  - Fusión Tardía:   AUC = {auc_fusion:.4f}")
 
-# ==============================================================================
-# Gráfica 1: Curva ROC Comparativa (Audio vs Visión vs Fusión)
-# ==============================================================================
 plt.figure(figsize=(8.5, 6.5), dpi=300)
 
 plt.plot(fpr_audio, tpr_audio, color='#2563EB', lw=2.2,
@@ -96,9 +79,6 @@ plt.close()
 print(f"-> Guardada Curva ROC en: {roc_path}")
 
 
-# ==============================================================================
-# 3. Cálculo del Equal Error Rate (EER): Cruce de FAR y FRR
-# ==============================================================================
 def compute_eer(y_true, y_scores, num_thresholds=1000):
     thresholds = np.linspace(0.0, 1.0, num_thresholds)
     far_list = []
@@ -134,9 +114,6 @@ print(f"  - Experto Audio:   EER = {eer_val_audio*100:.2f}% en Umbral = {eer_th_
 print(f"  - Experto Visión:  EER = {eer_val_vision*100:.2f}% en Umbral = {eer_th_vision:.3f} (Objetivo < 8.0%: {'CUMPLE' if eer_val_vision < 0.08 else 'NO CUMPLE'})")
 print(f"  - Fusión Tardía:   EER = {eer_val_fusion*100:.2f}% en Umbral = {eer_th_fusion:.3f}")
 
-# ==============================================================================
-# Gráfica 2: Cruce FAR vs FRR y Determinación del EER (Experto Audio)
-# ==============================================================================
 plt.figure(figsize=(8.5, 6.2), dpi=300)
 
 plt.plot(thresholds, far_audio * 100, color='#DC2626', lw=2.2, label='FAR (False Acceptance Rate - Falsa Aceptación)')
@@ -175,9 +152,6 @@ plt.close()
 print(f"-> Guardado EER Audio en: {eer_audio_path}")
 
 
-# ==============================================================================
-# Gráfica 3: Cruce FAR vs FRR y Determinación del EER (Fusión Multimodal)
-# ==============================================================================
 plt.figure(figsize=(8.5, 6.2), dpi=300)
 
 plt.plot(thresholds, far_fusion * 100, color='#DC2626', lw=2.2, label='FAR Multimodal (Falsa Aceptación)')

@@ -2,19 +2,14 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Directorio de salida
 output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "pruebas"))
 os.makedirs(output_dir, exist_ok=True)
 
-# Configuración de estilo visual académico
 plt.rcParams['font.family'] = 'sans-serif'
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
 plt.rcParams['axes.edgecolor'] = '#334155'
 plt.rcParams['axes.linewidth'] = 1.0
 
-# ==========================================
-# 1. MATRIZ DE CONFUSIÓN: EXPERTO DE AUDIO
-# ==========================================
 cm_audio = np.array([[1281, 1431],
                      [2,    5156]])
 
@@ -42,9 +37,6 @@ plt.savefig(p1, dpi=300, bbox_inches='tight')
 plt.close()
 print(f"Guardado: {p1}")
 
-# ==========================================
-# 2. MATRIZ DE CONFUSIÓN: EXPERTO DE VISIÓN
-# ==========================================
 cm_vision = np.array([[14293, 346],
                       [279,   7168]])
 
@@ -72,9 +64,6 @@ plt.savefig(p2, dpi=300, bbox_inches='tight')
 plt.close()
 print(f"Guardado: {p2}")
 
-# ==========================================
-# 3. MATRICES COMBINADAS LADO A LADO
-# ==========================================
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5.2), dpi=300)
 
 cax1 = ax1.matshow(cm_audio, cmap='Blues', alpha=0.85)
@@ -112,9 +101,6 @@ plt.savefig(p3, dpi=300, bbox_inches='tight')
 plt.close()
 print(f"Guardado: {p3}")
 
-# ==========================================
-# 4. GRÁFICA COMPARATIVA DE MÉTRICAS
-# ==========================================
 metricas = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
 audio_scores = [81.79, 78.28, 99.96, 87.80]
 vision_scores = [97.17, 95.40, 96.25, 95.82]
@@ -152,9 +138,6 @@ plt.savefig(p4, dpi=300, bbox_inches='tight')
 plt.close()
 print(f"Guardado: {p4}")
 
-# ==========================================
-# 5. TABLA RESUMEN DE MÉTRICAS EXPERIMENTALES
-# ==========================================
 fig, ax = plt.subplots(figsize=(11, 3.8), dpi=300)
 ax.axis('tight')
 ax.axis('off')

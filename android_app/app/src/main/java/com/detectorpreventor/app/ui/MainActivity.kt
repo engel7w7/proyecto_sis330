@@ -263,14 +263,20 @@ class MainActivity : ComponentActivity() {
     private fun inspectNotification(notif: InterceptedNotification) {
         lifecycleScope.launch(Dispatchers.Default) {
             val sampleUri = Uri.parse("content://com.detectorpreventor.app.notifications/${notif.id}")
-            val mime = if (notif.mediaType == MediaType.AUDIO_ONLY) "audio/opus" else "image/jpeg"
+            val mime = when (notif.mediaType) {
+                MediaType.AUDIO_ONLY -> "audio/opus"
+                MediaType.VIDEO_MULTIMODAL -> "video/mp4"
+                else -> "image/jpeg"
+            }
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
             payload = payload.copy(filename = "${notif.appName}: ${notif.sender} - ${notif.text}")
 
-            val fusionResult = notif.fusionResult ?: RiskScorer.calculateGlobalRisk(
-                if (notif.mediaType == MediaType.AUDIO_ONLY) notif.riskScore / 100f else null,
-                if (notif.mediaType == MediaType.IMAGE_ONLY) notif.riskScore / 100f else null
-            )
+            val fusionResult = notif.fusionResult ?: when (notif.mediaType) {
+                MediaType.AUDIO_ONLY -> RiskScorer.calculateGlobalRisk(notif.riskScore / 100f, null)
+                MediaType.IMAGE_ONLY -> RiskScorer.calculateGlobalRisk(null, notif.riskScore / 100f)
+                MediaType.VIDEO_MULTIMODAL -> RiskScorer.calculateGlobalRisk(notif.riskScore / 100f, notif.riskScore / 100f)
+                else -> RiskScorer.calculateGlobalRisk(notif.riskScore / 100f, null)
+            }
 
             telemetryManager.logThreatDetection(fusionResult, payload.mediaType.name)
 

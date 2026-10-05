@@ -1132,6 +1132,66 @@ fun NotificationsView(
 
                 Button(
                     onClick = {
+                        val fusion = RiskScorer.calculateGlobalRisk(0.94f, 0.89f)
+                        NotificationRepository.addNotification(
+                            InterceptedNotification(
+                                id = UUID.randomUUID().toString(),
+                                appName = "WhatsApp",
+                                packageName = "com.whatsapp",
+                                sender = "Contacto Sospechoso (+34 ...)",
+                                text = "Mira el video que me enviaron, urge que lo veas (video_01.mp4)",
+                                timestamp = System.currentTimeMillis(),
+                                mediaType = MediaType.VIDEO_MULTIMODAL,
+                                riskScore = fusion.globalRiskPercentage,
+                                isThreat = true,
+                                fusionResult = fusion
+                            )
+                        )
+                        Toast.makeText(context, "Alerta de seguridad: Video multimodal con desincronización detectado", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Video Multimodal con Inconsistencia (92% Riesgo)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        val fusion = RiskScorer.calculateGlobalRisk(null, 0.02f)
+                        NotificationRepository.addNotification(
+                            InterceptedNotification(
+                                id = UUID.randomUUID().toString(),
+                                appName = "WhatsApp",
+                                packageName = "com.whatsapp",
+                                sender = "Amigo del Grupo",
+                                text = "Sticker recibido (Sin riesgo de alteración facial)",
+                                timestamp = System.currentTimeMillis(),
+                                mediaType = MediaType.IMAGE_ONLY,
+                                riskScore = fusion.globalRiskPercentage,
+                                isThreat = false,
+                                fusionResult = fusion
+                            )
+                        )
+                        Toast.makeText(context, "Verificación: Sticker inocuo confirmado sin riesgo", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Sticker Inocuo (2% Riesgo - Seguro)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
                         val fusion = RiskScorer.calculateGlobalRisk(0.05f, null)
                         NotificationRepository.addNotification(
                             InterceptedNotification(

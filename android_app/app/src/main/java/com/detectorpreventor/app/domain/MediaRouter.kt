@@ -6,9 +6,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
+import com.detectorpreventor.app.notifications.NotificationRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -72,6 +74,57 @@ class MediaRouter(private val context: Context) {
                         audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: generateSpectrogramFromAudio(uri),
                         faceKeyframe = loadBitmapFromAsset(faceAsset) ?: loadBitmapFromAsset("samples/image_fake_face.jpg"),
                         filename = getFileNameFromUri(uri)
+                    )
+                }
+            }
+        }
+
+        if (uriStr.startsWith("content://com.detectorpreventor.app.notifications/")) {
+            val notifId = uri.lastPathSegment ?: ""
+            val notif = NotificationRepository.notifications.value.find { it.id == notifId }
+            val isThreat = notif?.isThreat ?: false
+            val mType = notif?.mediaType ?: resolveMediaType(uri, mimeType)
+
+            return@withContext when (mType) {
+                MediaType.AUDIO_ONLY -> {
+                    val asset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    val bitmap = loadBitmapFromAsset(asset) ?: generateSpectrogramFromAudio(uri)
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.AUDIO_ONLY,
+                        audioSpectrogram = bitmap,
+                        filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "audio_notificacion.opus"
+                    )
+                }
+                MediaType.IMAGE_ONLY -> {
+                    val isStickerNotif = notif?.text?.contains("sticker", ignoreCase = true) == true
+                    val bitmap = if (isStickerNotif) {
+                        createStickerBadgeBitmap("Sticker Verificado Seguro")
+                    } else {
+                        val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
+                        loadBitmapFromAsset(asset) ?: createSyntheticFaceBitmap("Imagen")
+                    }
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.IMAGE_ONLY,
+                        faceKeyframe = bitmap,
+                        filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "imagen_notificacion.jpg"
+                    )
+                }
+                MediaType.VIDEO_MULTIMODAL -> {
+                    val faceAsset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
+                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.VIDEO_MULTIMODAL,
+                        audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: createSyntheticSpectrogramBitmap(),
+                        faceKeyframe = loadBitmapFromAsset(faceAsset) ?: createSyntheticFaceBitmap("Video"),
+                        filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "video_notificacion.mp4"
+                    )
+                }
+                else -> {
+                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    ProcessedMediaPayload(
+                        mediaType = MediaType.UNKNOWN,
+                        audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: createSyntheticSpectrogramBitmap(),
+                        filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "mensaje_notificacion"
                     )
                 }
             }
@@ -143,7 +196,14 @@ class MediaRouter(private val context: Context) {
 
     private fun generateSpectrogramFromAudio(uri: Uri): Bitmap {
         Log.d(TAG, "Generando espectrograma desde audio: $uri")
-        return createSyntheticSpectrogramBitmap()
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                createSpectrogramFromInputStream(stream)
+            } ?: createSyntheticSpectrogramBitmap()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al generar espectrograma desde audio: ${e.message}")
+            createSyntheticSpectrogramBitmap()
+        }
     }
 
     private fun extractFaceFromImageUri(uri: Uri): Bitmap {
@@ -177,7 +237,96 @@ class MediaRouter(private val context: Context) {
 
     private fun generateSpectrogramFromAudioTrack(uri: Uri): Bitmap {
         Log.d(TAG, "Extrayendo audio de video para espectrograma: $uri")
-        return createSyntheticSpectrogramBitmap()
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                createSpectrogramFromInputStream(stream)
+            } ?: createSyntheticSpectrogramBitmap()
+        } catch (e: Exception) {
+            createSyntheticSpectrogramBitmap()
+        }
+    }
+
+    private fun createSpectrogramFromInputStream(stream: java.io.InputStream): Bitmap {
+        val buffer = ByteArray(32768)
+        val bytesRead = stream.read(buffer)
+        if (bytesRead <= 0) return createSyntheticSpectrogramBitmap()
+
+        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint()
+
+        canvas.drawColor(Color.rgb(15, 23, 42))
+
+        val step = 4
+        val numCols = 224 / step
+        val numRows = 224 / step
+        val chunk = maxOf(1, bytesRead / numCols)
+
+        for (col in 0 until numCols) {
+            val byteIndex = (col * chunk).coerceIn(0, bytesRead - 1)
+            val baseVal = (buffer[byteIndex].toInt() and 0xFF)
+
+            for (row in 0 until numRows) {
+                val freqFactor = 1.0 - (row.toDouble() / numRows)
+                val variation = Math.sin((col * 0.2) + (row * 0.15) + (baseVal * 0.05))
+                val intensity = ((baseVal * freqFactor * 0.8 + (variation + 1.0) * 40.0)).toInt().coerceIn(0, 255)
+
+                val r = (intensity * 1.1).toInt().coerceIn(0, 255)
+                val g = (intensity * 0.7).toInt().coerceIn(0, 255)
+                val b = (255 - intensity * 0.6).toInt().coerceIn(0, 255)
+
+                paint.color = Color.rgb(r, g, b)
+                val x = (col * step).toFloat()
+                val y = (row * step).toFloat()
+                canvas.drawRect(x, y, x + step, y + step, paint)
+            }
+        }
+        return bitmap
+    }
+
+    fun createStickerBadgeBitmap(label: String): Bitmap {
+        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint()
+
+        canvas.drawColor(Color.rgb(15, 23, 42))
+
+        // Contorno de badge esmeralda (seguro)
+        paint.color = Color.rgb(16, 185, 129)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        canvas.drawRoundRect(20f, 20f, 204f, 204f, 24f, 24f, paint)
+
+        paint.color = Color.argb(30, 16, 185, 129)
+        paint.style = Paint.Style.FILL
+        canvas.drawRoundRect(20f, 20f, 204f, 204f, 24f, 24f, paint)
+
+        // Grafico estilizado de sticker
+        paint.color = Color.rgb(56, 189, 248)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        canvas.drawCircle(112f, 100f, 42f, paint)
+
+        paint.style = Paint.Style.FILL
+        canvas.drawCircle(98f, 92f, 5f, paint)
+        canvas.drawCircle(126f, 92f, 5f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2.5f
+        val smileRect = RectF(94f, 94f, 130f, 120f)
+        canvas.drawArc(smileRect, 20f, 140f, false, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        paint.textSize = 12f
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText(label, 112f, 172f, paint)
+
+        paint.color = Color.rgb(148, 163, 184)
+        paint.textSize = 10f
+        canvas.drawText("Sin Manipulacion Facial", 112f, 190f, paint)
+
+        return bitmap
     }
 
     private fun createSyntheticSpectrogramBitmap(): Bitmap {

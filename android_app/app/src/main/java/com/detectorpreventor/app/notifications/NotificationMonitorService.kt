@@ -132,9 +132,17 @@ class NotificationMonitorService : NotificationListenerService() {
                         if (mimeType.startsWith("audio", ignoreCase = true)) {
                             messagingStyleMediaType = MediaType.AUDIO_ONLY
                             styleMessages.add("Nota de voz adjunta ($mimeType)")
+                        } else if (mimeType.startsWith("video", ignoreCase = true)) {
+                            messagingStyleMediaType = MediaType.VIDEO_MULTIMODAL
+                            styleMessages.add("Video adjunto ($mimeType)")
                         } else if (mimeType.startsWith("image", ignoreCase = true)) {
-                            messagingStyleMediaType = MediaType.IMAGE_ONLY
-                            styleMessages.add("Imagen adjunta ($mimeType)")
+                            if (mimeType.contains("webp", ignoreCase = true)) {
+                                messagingStyleMediaType = MediaType.IMAGE_ONLY
+                                styleMessages.add("Sticker adjunto ($mimeType)")
+                            } else {
+                                messagingStyleMediaType = MediaType.IMAGE_ONLY
+                                styleMessages.add("Imagen adjunta ($mimeType)")
+                            }
                         }
                     }
                 }
@@ -172,35 +180,49 @@ class NotificationMonitorService : NotificationListenerService() {
             else -> rawTitle ?: "Contacto de WhatsApp"
         }
 
-        // Deteccion de medios y duracion
+        // Deteccion precisa de medios (Stickers, Videos, Audios, Imagenes)
+        val isSticker = combinedContent.contains("sticker", ignoreCase = true) ||
+                styleMessages.any { it.contains("sticker", ignoreCase = true) }
+
+        val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
+                combinedContent.contains("video", ignoreCase = true) ||
+                combinedContent.contains("vídeo", ignoreCase = true) ||
+                combinedContent.contains("videollamada", ignoreCase = true) ||
+                combinedContent.contains("videonota", ignoreCase = true)
+
         val durationRegex = Regex("""\b\d{1,2}:\d{2}\b""")
-        val isAudioRelated = isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.AUDIO_ONLY ||
+        val isAudioRelated = !isVideoRelated && (
+                (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.AUDIO_ONLY) ||
                 combinedContent.contains("audio", ignoreCase = true) ||
                 combinedContent.contains("nota de voz", ignoreCase = true) ||
                 combinedContent.contains("mensaje de voz", ignoreCase = true) ||
                 combinedContent.contains("voice message", ignoreCase = true) ||
                 combinedContent.contains("voice note", ignoreCase = true) ||
                 (isWhatsApp && durationRegex.containsMatchIn(combinedContent))
+        )
 
-        val isImageRelated = isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY ||
+        val isImageRelated = !isSticker && !isVideoRelated && !isAudioRelated && (
+                (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY) ||
                 combinedContent.contains("foto", ignoreCase = true) ||
                 combinedContent.contains("imagen", ignoreCase = true) ||
                 combinedContent.contains("photo", ignoreCase = true) ||
-                combinedContent.contains("image", ignoreCase = true) ||
-                combinedContent.contains("sticker", ignoreCase = true)
+                combinedContent.contains("image", ignoreCase = true)
+        )
 
         // Deteccion de palabras clave de ingenieria social / fraude financiero
         val fraudKeywords = listOf(
             "urgente", "deposito", "depósito", "transferencia", "dinero", "banco",
             "tarjeta", "ganaste", "premio", "cuenta bloqueada", "mama", "mamá",
             "papa", "papá", "hijo", "ayuda", "familiar", "codigo", "código",
-            "verificacion", "verificación", "nip", "clave"
+            "verificacion", "verificación", "nip", "clave", "emergencia", "prestamo", "préstamo"
         )
         val containsFraudKeyword = fraudKeywords.any { combinedContent.contains(it, ignoreCase = true) }
+        val isUnknownSender = sender.startsWith("+") || sender.contains("desconocido", ignoreCase = true)
 
         val mediaType = when {
+            isVideoRelated -> MediaType.VIDEO_MULTIMODAL
             isAudioRelated -> MediaType.AUDIO_ONLY
-            isImageRelated -> MediaType.IMAGE_ONLY
+            isImageRelated || isSticker -> MediaType.IMAGE_ONLY
             else -> MediaType.UNKNOWN
         }
 
@@ -210,23 +232,49 @@ class NotificationMonitorService : NotificationListenerService() {
             else -> "Mensajeria"
         }
 
-        // Evaluacion del riesgo
+        // Evaluacion contextual y diferenciada del riesgo:
+        // Los stickers inocuos no son amenazas faciales ni deepfakes (riesgo basal minimo ~2%).
+        // Las fotos, audios y videos se analizan segun remitente, contexto e indicios de fraude.
         val (audioProb, visionProb) = when {
-            isAudioRelated -> Pair(0.92f, null)
-            isImageRelated -> Pair(null, 0.89f)
+            isSticker -> {
+                if (containsFraudKeyword) Pair(null, 0.70f) else Pair(null, 0.02f)
+            }
+            isVideoRelated -> {
+                if (containsFraudKeyword || isUnknownSender) Pair(0.94f, 0.88f) else Pair(0.05f, 0.04f)
+            }
+            isAudioRelated -> {
+                if (containsFraudKeyword || isUnknownSender) Pair(0.93f, null) else Pair(0.06f, null)
+            }
+            isImageRelated -> {
+                if (containsFraudKeyword || isUnknownSender) Pair(null, 0.91f) else Pair(null, 0.04f)
+            }
             containsFraudKeyword -> Pair(0.85f, null)
-            else -> Pair(0.05f, null)
+            else -> Pair(0.03f, null)
         }
 
         val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
 
         val displayText = when {
+            isSticker -> {
+                if (containsFraudKeyword) "Sticker acompañado de mensaje sospechoso"
+                else "Sticker recibido (Sin riesgo de alteración facial)"
+            }
+            isVideoRelated -> {
+                if (containsFraudKeyword) "Video sospechoso con posible alteración audiovisual"
+                else "Video recibido"
+            }
+            isAudioRelated -> {
+                if (containsFraudKeyword) "Nota de voz sospechosa (Posible clonación / Deepfake)"
+                else "Nota de voz recibida"
+            }
+            isImageRelated -> {
+                if (containsFraudKeyword) "Fotografía sospechosa (Alerta: Posible FaceSwap)"
+                else "Fotografía recibida"
+            }
             styleMessages.isNotEmpty() -> styleMessages.last()
             text.isNotBlank() -> text
             bigText.isNotBlank() -> bigText
             textLines.isNotEmpty() -> textLines.last()
-            isAudioRelated -> "Nota de voz recibida"
-            isImageRelated -> "Archivo de imagen recibido"
             else -> combinedContent.ifBlank { "Mensaje entrante" }
         }
 

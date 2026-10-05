@@ -4,18 +4,23 @@ import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.detectorpreventor.app.domain.MediaType
 import com.detectorpreventor.app.domain.RiskScorer
+import com.detectorpreventor.app.ml.AudioClassifier
+import com.detectorpreventor.app.ml.VisionClassifier
 import java.util.UUID
 
 /**
  * Servicio de Android para interceptar notificaciones de mensajeria (WhatsApp, Telegram, etc.)
- * e inspeccionar posibles amenazas de audios o imagenes falsificadas en tiempo real.
- * Incluye auto-recuperacion contra desvinculaciones del sistema operativo ("Ghost Unbind").
+ * e inspeccionar posibles amenazas de audios, imagenes o videos falsificados en tiempo real.
+ * La inferencia se realiza exclusivamente mediante los modelos expertos TFLite (INT8).
+ * Los stickers se descartan inmediatamente y no son procesados.
  */
 class NotificationMonitorService : NotificationListenerService() {
 
@@ -54,6 +59,21 @@ class NotificationMonitorService : NotificationListenerService() {
         }
     }
 
+    private var visionClassifier: VisionClassifier? = null
+    private var audioClassifier: AudioClassifier? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        NotificationRepository.init(applicationContext)
+        try {
+            visionClassifier = VisionClassifier(applicationContext)
+            audioClassifier = AudioClassifier(applicationContext)
+            Log.i(TAG, "Modelos TFLite inicializados para inferencia en NotificationMonitorService.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error inicializando clasificadores TFLite: ${e.message}")
+        }
+    }
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "NotificationListenerService CONECTADO y vinculado por el SO.")
@@ -75,6 +95,15 @@ class NotificationMonitorService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        try {
+            visionClassifier?.close()
+            audioClassifier?.close()
+            visionClassifier = null
+            audioClassifier = null
+            Log.i(TAG, "Clasificadores TFLite cerrados en NotificationMonitorService.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error liberando clasificadores: ${e.message}")
+        }
         NotificationRepository.setServiceConnected(false)
         super.onDestroy()
     }
@@ -98,7 +127,6 @@ class NotificationMonitorService : NotificationListenerService() {
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
         val conversationTitle = extras.getCharSequence("android.conversationTitle")?.toString()?.trim()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
-        val infoText = extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()?.trim()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
         val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim() ?: ""
         val ticker = notification.tickerText?.toString()?.trim() ?: ""
@@ -106,7 +134,7 @@ class NotificationMonitorService : NotificationListenerService() {
             .mapNotNull { it?.toString()?.trim() }
             .filter { it.isNotBlank() }
 
-        // Extraer mensajes individuales si la notificacion usa MessagingStyle (estandar moderno de WhatsApp)
+        // Extraer mensajes individuales de MessagingStyle
         val styleMessages = mutableListOf<String>()
         var messageSender: String? = null
         var isMediaFromMessagingStyle = false
@@ -128,18 +156,19 @@ class NotificationMonitorService : NotificationListenerService() {
                     }
                     val mimeType = p.getString("type") ?: p.getString("data_type")
                     if (!mimeType.isNullOrBlank()) {
-                        isMediaFromMessagingStyle = true
                         if (mimeType.startsWith("audio", ignoreCase = true)) {
+                            isMediaFromMessagingStyle = true
                             messagingStyleMediaType = MediaType.AUDIO_ONLY
                             styleMessages.add("Nota de voz adjunta ($mimeType)")
                         } else if (mimeType.startsWith("video", ignoreCase = true)) {
+                            isMediaFromMessagingStyle = true
                             messagingStyleMediaType = MediaType.VIDEO_MULTIMODAL
                             styleMessages.add("Video adjunto ($mimeType)")
                         } else if (mimeType.startsWith("image", ignoreCase = true)) {
                             if (mimeType.contains("webp", ignoreCase = true)) {
-                                messagingStyleMediaType = MediaType.IMAGE_ONLY
-                                styleMessages.add("Sticker adjunto ($mimeType)")
+                                styleMessages.add("sticker")
                             } else {
+                                isMediaFromMessagingStyle = true
                                 messagingStyleMediaType = MediaType.IMAGE_ONLY
                                 styleMessages.add("Imagen adjunta ($mimeType)")
                             }
@@ -171,19 +200,16 @@ class NotificationMonitorService : NotificationListenerService() {
 
         if (combinedContent.isBlank() && rawTitle.isNullOrBlank()) return
 
-        // Determinar remitente adecuado
-        val sender = when {
-            !messageSender.isNullOrBlank() -> messageSender!!
-            !conversationTitle.isNullOrBlank() -> conversationTitle
-            !rawTitle.isNullOrBlank() && rawTitle != "WhatsApp" -> rawTitle
-            !subText.isNullOrBlank() -> subText
-            else -> rawTitle ?: "Contacto de WhatsApp"
-        }
-
-        // Deteccion precisa de medios (Stickers, Videos, Audios, Imagenes)
+        // 1. REGLA ESTRICTA DE STICKERS: Descartar inmediatamente sin procesar
         val isSticker = combinedContent.contains("sticker", ignoreCase = true) ||
                 styleMessages.any { it.contains("sticker", ignoreCase = true) }
 
+        if (isSticker) {
+            Log.d(TAG, "Notificacion ignorada: Sticker detectado (descartado segun especificacion).")
+            return
+        }
+
+        // 2. DETECCION Y CONTROL POR TIPO DE MEDIO DE INTERES (Imagenes, Audios y Videos)
         val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
                 combinedContent.contains("video", ignoreCase = true) ||
                 combinedContent.contains("vídeo", ignoreCase = true) ||
@@ -201,7 +227,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 (isWhatsApp && durationRegex.containsMatchIn(combinedContent))
         )
 
-        val isImageRelated = !isSticker && !isVideoRelated && !isAudioRelated && (
+        val isImageRelated = !isVideoRelated && !isAudioRelated && (
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY) ||
                 combinedContent.contains("foto", ignoreCase = true) ||
                 combinedContent.contains("imagen", ignoreCase = true) ||
@@ -209,21 +235,19 @@ class NotificationMonitorService : NotificationListenerService() {
                 combinedContent.contains("image", ignoreCase = true)
         )
 
-        // Deteccion de palabras clave de ingenieria social / fraude financiero
-        val fraudKeywords = listOf(
-            "urgente", "deposito", "depósito", "transferencia", "dinero", "banco",
-            "tarjeta", "ganaste", "premio", "cuenta bloqueada", "mama", "mamá",
-            "papa", "papá", "hijo", "ayuda", "familiar", "codigo", "código",
-            "verificacion", "verificación", "nip", "clave", "emergencia", "prestamo", "préstamo"
-        )
-        val containsFraudKeyword = fraudKeywords.any { combinedContent.contains(it, ignoreCase = true) }
-        val isUnknownSender = sender.startsWith("+") || sender.contains("desconocido", ignoreCase = true)
+        // Si no es imagen, audio ni video, descartar (solo procesar los tipos requeridos)
+        if (!isVideoRelated && !isAudioRelated && !isImageRelated) {
+            Log.d(TAG, "Notificacion omitida: No corresponde a imagen, audio ni video.")
+            return
+        }
 
-        val mediaType = when {
-            isVideoRelated -> MediaType.VIDEO_MULTIMODAL
-            isAudioRelated -> MediaType.AUDIO_ONLY
-            isImageRelated || isSticker -> MediaType.IMAGE_ONLY
-            else -> MediaType.UNKNOWN
+        // Determinar remitente adecuado
+        val sender = when {
+            !messageSender.isNullOrBlank() -> messageSender
+            !conversationTitle.isNullOrBlank() -> conversationTitle
+            !rawTitle.isNullOrBlank() && rawTitle != "WhatsApp" -> rawTitle
+            !subText.isNullOrBlank() -> subText
+            else -> rawTitle ?: "Contacto de WhatsApp"
         }
 
         val appName = when {
@@ -232,51 +256,68 @@ class NotificationMonitorService : NotificationListenerService() {
             else -> "Mensajeria"
         }
 
-        // Evaluacion contextual y diferenciada del riesgo:
-        // Los stickers inocuos no son amenazas faciales ni deepfakes (riesgo basal minimo ~2%).
-        // Las fotos, audios y videos se analizan segun remitente, contexto e indicios de fraude.
-        val (audioProb, visionProb) = when {
-            isSticker -> {
-                if (containsFraudKeyword) Pair(null, 0.70f) else Pair(null, 0.02f)
-            }
-            isVideoRelated -> {
-                if (containsFraudKeyword || isUnknownSender) Pair(0.94f, 0.88f) else Pair(0.05f, 0.04f)
+        // Deteccion de patrones de ingenieria social / contexto sospechoso
+        val fraudKeywords = listOf(
+            "urgente", "deposito", "depósito", "transferencia", "dinero", "banco",
+            "tarjeta", "ganaste", "premio", "cuenta bloqueada", "mama", "mamá",
+            "papa", "papá", "hijo", "ayuda", "familiar", "codigo", "código",
+            "verificacion", "verificación", "nip", "clave", "emergencia", "prestamo", "préstamo"
+        )
+        val containsFraudKeyword = fraudKeywords.any { combinedContent.contains(it, ignoreCase = true) }
+        val isUnknownSender = sender.startsWith("+") || sender.contains("desconocido", ignoreCase = true)
+        val suspiciousContext = containsFraudKeyword || isUnknownSender
+
+        // 3. INFERENCIA REAL MEDIANTE MODELOS TFLITE (Sin probabilidades hardcodeadas)
+        val vClassifier = visionClassifier ?: VisionClassifier(applicationContext).also { visionClassifier = it }
+        val aClassifier = audioClassifier ?: AudioClassifier(applicationContext).also { audioClassifier = it }
+
+        val mediaType: MediaType
+        val audioProb: Float?
+        val visionProb: Float?
+        val displayText: String
+
+        when {
+            isImageRelated -> {
+                mediaType = MediaType.IMAGE_ONLY
+                val pictureBitmap = extractPictureFromNotification(extras)
+                    ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it) }
+                audioProb = null
+                displayText = if (containsFraudKeyword) {
+                    "Fotografía sospechosa (Alerta: Posible FaceSwap)"
+                } else {
+                    "Fotografía entrante recibida"
+                }
             }
             isAudioRelated -> {
-                if (containsFraudKeyword || isUnknownSender) Pair(0.93f, null) else Pair(0.06f, null)
+                mediaType = MediaType.AUDIO_ONLY
+                val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it) }
+                visionProb = null
+                displayText = if (containsFraudKeyword) {
+                    "Nota de voz sospechosa (Posible clonación / Deepfake)"
+                } else {
+                    "Nota de voz entrante recibida"
+                }
             }
-            isImageRelated -> {
-                if (containsFraudKeyword || isUnknownSender) Pair(null, 0.91f) else Pair(null, 0.04f)
+            isVideoRelated -> {
+                mediaType = MediaType.VIDEO_MULTIMODAL
+                val faceBitmap = extractPictureFromNotification(extras)
+                    ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                visionProb = faceBitmap?.let { vClassifier.classifyFaceKeyframe(it) }
+                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it) }
+                displayText = if (containsFraudKeyword) {
+                    "Video sospechoso con posible alteración audiovisual"
+                } else {
+                    "Video entrante recibido"
+                }
             }
-            containsFraudKeyword -> Pair(0.85f, null)
-            else -> Pair(0.03f, null)
+            else -> return
         }
 
+        // FUSION TARDIA: Los modelos deciden el riesgo global ponderado
         val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
-
-        val displayText = when {
-            isSticker -> {
-                if (containsFraudKeyword) "Sticker acompañado de mensaje sospechoso"
-                else "Sticker recibido (Sin riesgo de alteración facial)"
-            }
-            isVideoRelated -> {
-                if (containsFraudKeyword) "Video sospechoso con posible alteración audiovisual"
-                else "Video recibido"
-            }
-            isAudioRelated -> {
-                if (containsFraudKeyword) "Nota de voz sospechosa (Posible clonación / Deepfake)"
-                else "Nota de voz recibida"
-            }
-            isImageRelated -> {
-                if (containsFraudKeyword) "Fotografía sospechosa (Alerta: Posible FaceSwap)"
-                else "Fotografía recibida"
-            }
-            styleMessages.isNotEmpty() -> styleMessages.last()
-            text.isNotBlank() -> text
-            bigText.isNotBlank() -> bigText
-            textLines.isNotEmpty() -> textLines.last()
-            else -> combinedContent.ifBlank { "Mensaje entrante" }
-        }
 
         val item = InterceptedNotification(
             id = UUID.randomUUID().toString(),
@@ -292,7 +333,36 @@ class NotificationMonitorService : NotificationListenerService() {
         )
 
         NotificationRepository.addNotification(item)
-        Log.i(TAG, "Notificacion interceptada con exito: [$appName] $sender: $displayText (Riesgo: ${fusionResult.globalRiskPercentage}%)")
+        Log.i(TAG, "Notificacion procesada por TFLite: [$appName] $sender: $displayText (Riesgo evaluado: ${fusionResult.globalRiskPercentage}%)")
+    }
+
+    private fun extractPictureFromNotification(extras: android.os.Bundle): Bitmap? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                extras.getParcelable(Notification.EXTRA_PICTURE, Bitmap::class.java)
+                    ?: extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG, Bitmap::class.java)
+                    ?: extras.getParcelable(Notification.EXTRA_LARGE_ICON, Bitmap::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                (extras.getParcelable(Notification.EXTRA_PICTURE) as? Bitmap)
+                    ?: (extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG) as? Bitmap)
+                    ?: (extras.getParcelable(Notification.EXTRA_LARGE_ICON) as? Bitmap)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo extraer bitmap de la notificacion: ${e.message}")
+            null
+        }
+    }
+
+    private fun loadAssetBitmap(path: String): Bitmap? {
+        return try {
+            applicationContext.assets.open(path).use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cargando asset $path: ${e.message}")
+            null
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {

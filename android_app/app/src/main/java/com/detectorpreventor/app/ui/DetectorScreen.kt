@@ -54,7 +54,8 @@ fun DetectorScreen(
     onScreenChange: (ScreenNav) -> Unit = {},
     onSelectFile: () -> Unit,
     onAnalyzeSample: (String, Int) -> Unit,
-    onInspectNotification: (InterceptedNotification) -> Unit = {}
+    onInspectNotification: (InterceptedNotification) -> Unit = {},
+    onSimulateNotification: (MediaType, Boolean, String, String) -> Unit = { _, _, _, _ -> }
 ) {
     var isHeatmapEnabled by remember { mutableStateOf(true) }
 
@@ -124,7 +125,8 @@ fun DetectorScreen(
                     onInspectNotification = { notif ->
                         onInspectNotification(notif)
                         onScreenChange(ScreenNav.Scanner)
-                    }
+                    },
+                    onSimulateNotification = onSimulateNotification
                 )
                 is ScreenNav.Benchmark -> BenchmarkView(
                     onAnalyzeSample = { type, idx ->
@@ -810,7 +812,8 @@ fun SystemInfoView() {
  */
 @Composable
 fun NotificationsView(
-    onInspectNotification: (InterceptedNotification) -> Unit
+    onInspectNotification: (InterceptedNotification) -> Unit,
+    onSimulateNotification: (MediaType, Boolean, String, String) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     val notifications by NotificationRepository.notifications.collectAsState()
@@ -1072,22 +1075,13 @@ fun NotificationsView(
 
                 Button(
                     onClick = {
-                        val fusion = RiskScorer.calculateGlobalRisk(0.94f, null)
-                        NotificationRepository.addNotification(
-                            InterceptedNotification(
-                                id = UUID.randomUUID().toString(),
-                                appName = "WhatsApp",
-                                packageName = "com.whatsapp",
-                                sender = "Mamá (Urgente)",
-                                text = "Hijo, perdí mi tarjeta, hazme un depósito rápido por favor (Nota de voz 0:14)",
-                                timestamp = System.currentTimeMillis(),
-                                mediaType = MediaType.AUDIO_ONLY,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = true,
-                                fusionResult = fusion
-                            )
+                        onSimulateNotification(
+                            MediaType.AUDIO_ONLY,
+                            true,
+                            "Mamá (Urgente)",
+                            "Hijo, perdí mi tarjeta, hazme un depósito rápido por favor (Nota de voz 0:14)"
                         )
-                        Toast.makeText(context, "Alerta de seguridad: Audio sospechoso interceptado", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Audio sospechoso interceptado y procesado por TFLite", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = RiskHighRed.copy(alpha = 0.85f)),
                     shape = RoundedCornerShape(8.dp),
@@ -1095,29 +1089,20 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Simular Audio de Voz Manipulado (94% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Audio de Voz Manipulado (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
                     onClick = {
-                        val fusion = RiskScorer.calculateGlobalRisk(null, 0.97f)
-                        NotificationRepository.addNotification(
-                            InterceptedNotification(
-                                id = UUID.randomUUID().toString(),
-                                appName = "WhatsApp",
-                                packageName = "com.whatsapp",
-                                sender = "Número Desconocido (+591 ...)",
-                                text = "Mira esta foto tuya que encontré en redes (foto_comprometedora.jpg)",
-                                timestamp = System.currentTimeMillis(),
-                                mediaType = MediaType.IMAGE_ONLY,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = true,
-                                fusionResult = fusion
-                            )
+                        onSimulateNotification(
+                            MediaType.IMAGE_ONLY,
+                            true,
+                            "Número Desconocido (+591 ...)",
+                            "Mira esta foto tuya que encontré en redes (foto_comprometedora.jpg)"
                         )
-                        Toast.makeText(context, "Alerta de seguridad: Imagen alterada (FaceSwap) detectada", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Imagen alterada interceptada y procesada por TFLite", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
                     shape = RoundedCornerShape(8.dp),
@@ -1125,29 +1110,20 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.Image, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Simular Imagen Facial Alterada (97% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Imagen Facial Alterada (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
                     onClick = {
-                        val fusion = RiskScorer.calculateGlobalRisk(0.94f, 0.89f)
-                        NotificationRepository.addNotification(
-                            InterceptedNotification(
-                                id = UUID.randomUUID().toString(),
-                                appName = "WhatsApp",
-                                packageName = "com.whatsapp",
-                                sender = "Contacto Sospechoso (+34 ...)",
-                                text = "Mira el video que me enviaron, urge que lo veas (video_01.mp4)",
-                                timestamp = System.currentTimeMillis(),
-                                mediaType = MediaType.VIDEO_MULTIMODAL,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = true,
-                                fusionResult = fusion
-                            )
+                        onSimulateNotification(
+                            MediaType.VIDEO_MULTIMODAL,
+                            true,
+                            "Contacto Sospechoso (+34 ...)",
+                            "Mira el video que me enviaron, urge que lo veas (video_01.mp4)"
                         )
-                        Toast.makeText(context, "Alerta de seguridad: Video multimodal con desincronización detectado", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Video multimodal interceptado y procesado por TFLite", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                     shape = RoundedCornerShape(8.dp),
@@ -1155,59 +1131,20 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Simular Video Multimodal con Inconsistencia (92% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Video Multimodal Inconsistente (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
                     onClick = {
-                        val fusion = RiskScorer.calculateGlobalRisk(null, 0.02f)
-                        NotificationRepository.addNotification(
-                            InterceptedNotification(
-                                id = UUID.randomUUID().toString(),
-                                appName = "WhatsApp",
-                                packageName = "com.whatsapp",
-                                sender = "Amigo del Grupo",
-                                text = "Sticker recibido (Sin riesgo de alteración facial)",
-                                timestamp = System.currentTimeMillis(),
-                                mediaType = MediaType.IMAGE_ONLY,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = false,
-                                fusionResult = fusion
-                            )
+                        onSimulateNotification(
+                            MediaType.AUDIO_ONLY,
+                            false,
+                            "Carlos Amigo",
+                            "Hola hermano, nos vemos a las 5pm en la facultad (Nota de voz 0:09)"
                         )
-                        Toast.makeText(context, "Verificación: Sticker inocuo confirmado sin riesgo", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Simular Sticker Inocuo (2% Riesgo - Seguro)", fontSize = 12.sp, color = Color.White)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        val fusion = RiskScorer.calculateGlobalRisk(0.05f, null)
-                        NotificationRepository.addNotification(
-                            InterceptedNotification(
-                                id = UUID.randomUUID().toString(),
-                                appName = "WhatsApp",
-                                packageName = "com.whatsapp",
-                                sender = "Carlos Amigo",
-                                text = "Hola hermano, nos vemos a las 5pm en la facultad (Nota de voz 0:09)",
-                                timestamp = System.currentTimeMillis(),
-                                mediaType = MediaType.AUDIO_ONLY,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = false,
-                                fusionResult = fusion
-                            )
-                        )
-                        Toast.makeText(context, "Verificación: Audio legítimo autenticado", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Audio legítimo autenticado por modelo de audio TFLite", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                     shape = RoundedCornerShape(8.dp),
@@ -1215,7 +1152,28 @@ fun NotificationsView(
                 ) {
                     Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Simular Audio de Voz Auténtico (5% Riesgo)", fontSize = 12.sp, color = Color.White)
+                    Text("Simular Audio de Voz Auténtico (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
+                            MediaType.IMAGE_ONLY,
+                            false,
+                            "Hermana",
+                            "Foto familiar del almuerzo (foto_original.jpg)"
+                        )
+                        Toast.makeText(context, "Fotografía legítima autenticada por modelo de visión TFLite", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Fotografía Facial Auténtica (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
                 }
             }
         }

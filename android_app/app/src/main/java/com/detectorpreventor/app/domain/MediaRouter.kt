@@ -96,13 +96,8 @@ class MediaRouter(private val context: Context) {
                     )
                 }
                 MediaType.IMAGE_ONLY -> {
-                    val isStickerNotif = notif?.text?.contains("sticker", ignoreCase = true) == true
-                    val bitmap = if (isStickerNotif) {
-                        createStickerBadgeBitmap("Sticker Verificado Seguro")
-                    } else {
-                        val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                        loadBitmapFromAsset(asset) ?: createSyntheticFaceBitmap("Imagen")
-                    }
+                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
+                    val bitmap = loadBitmapFromAsset(asset) ?: createSyntheticFaceBitmap("Imagen")
                     ProcessedMediaPayload(
                         mediaType = MediaType.IMAGE_ONLY,
                         faceKeyframe = bitmap,
@@ -284,50 +279,6 @@ class MediaRouter(private val context: Context) {
         return bitmap
     }
 
-    fun createStickerBadgeBitmap(label: String): Bitmap {
-        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint()
-
-        canvas.drawColor(Color.rgb(15, 23, 42))
-
-        // Contorno de badge esmeralda (seguro)
-        paint.color = Color.rgb(16, 185, 129)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f
-        canvas.drawRoundRect(20f, 20f, 204f, 204f, 24f, 24f, paint)
-
-        paint.color = Color.argb(30, 16, 185, 129)
-        paint.style = Paint.Style.FILL
-        canvas.drawRoundRect(20f, 20f, 204f, 204f, 24f, 24f, paint)
-
-        // Grafico estilizado de sticker
-        paint.color = Color.rgb(56, 189, 248)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f
-        canvas.drawCircle(112f, 100f, 42f, paint)
-
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(98f, 92f, 5f, paint)
-        canvas.drawCircle(126f, 92f, 5f, paint)
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2.5f
-        val smileRect = RectF(94f, 94f, 130f, 120f)
-        canvas.drawArc(smileRect, 20f, 140f, false, paint)
-
-        paint.style = Paint.Style.FILL
-        paint.color = Color.WHITE
-        paint.textSize = 12f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText(label, 112f, 172f, paint)
-
-        paint.color = Color.rgb(148, 163, 184)
-        paint.textSize = 10f
-        canvas.drawText("Sin Manipulacion Facial", 112f, 190f, paint)
-
-        return bitmap
-    }
 
     private fun createSyntheticSpectrogramBitmap(): Bitmap {
         val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)

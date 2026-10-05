@@ -1,6 +1,8 @@
 package com.detectorpreventor.app.ui
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -25,10 +27,12 @@ import com.detectorpreventor.app.ml.VisionClassifier
 import com.detectorpreventor.app.telemetry.FirebaseTelemetryManager
 import com.detectorpreventor.app.notifications.InterceptedNotification
 import com.detectorpreventor.app.notifications.NotificationMonitorService
+import com.detectorpreventor.app.notifications.NotificationRepository
 import com.detectorpreventor.app.ui.theme.BackgroundDark
 import com.detectorpreventor.app.ui.theme.DetectorPreventorTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * Actividad principal de la aplicación.
@@ -88,6 +92,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onInspectNotification = { notif ->
                             inspectNotification(notif)
+                        },
+                        onSimulateNotification = { mediaType, isThreat, sender, text ->
+                            simulateIncomingNotification(mediaType, isThreat, sender, text)
                         }
                     )
                 }
@@ -190,37 +197,38 @@ class MainActivity : ComponentActivity() {
 
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
 
-            val (sampleName, targetAudioProb, targetVisionProb) = when (sampleType) {
+            val sampleName = when (sampleType) {
                 "audio" -> when (index) {
-                    1 -> Triple("Muestra 1: Voz Humana Real (ASVspoof Bonafide).opus", 0.04f, null)
-                    2 -> Triple("Muestra 2: Clonación por IA (ASVspoof Deepfake).opus", 0.96f, null)
-                    3 -> Triple("Muestra 3: Síntesis de Texto a Voz (TTS AI).wav", 0.88f, null)
-                    4 -> Triple("Muestra 4: Nota de Voz WhatsApp Replicada.opus", 0.92f, null)
-                    else -> Triple("Muestra 5: Conversación Telefónica Auténtica.mp3", 0.08f, null)
+                    1 -> "Muestra 1: Voz Humana Real (ASVspoof Bonafide).opus"
+                    2 -> "Muestra 2: Clonación por IA (ASVspoof Deepfake).opus"
+                    3 -> "Muestra 3: Síntesis de Texto a Voz (TTS AI).wav"
+                    4 -> "Muestra 4: Nota de Voz WhatsApp Replicada.opus"
+                    else -> "Muestra 5: Conversación Telefónica Auténtica.mp3"
                 }
                 "image" -> when (index) {
-                    1 -> Triple("Muestra 1: Retrato Real Prístino (FF++).jpg", null, 0.02f)
-                    2 -> Triple("Muestra 2: Manipulación FaceSwap AI.jpg", null, 0.98f)
-                    3 -> Triple("Muestra 3: Rostro Sintético GAN (CIFAKE).png", null, 0.91f)
-                    4 -> Triple("Muestra 4: Reenactamiento Face2Face.jpg", null, 0.89f)
-                    else -> Triple("Muestra 5: Fotografía HD Original.jpg", null, 0.05f)
+                    1 -> "Muestra 1: Retrato Real Prístino (FF++).jpg"
+                    2 -> "Muestra 2: Manipulación FaceSwap AI.jpg"
+                    3 -> "Muestra 3: Rostro Sintético GAN (CIFAKE).png"
+                    4 -> "Muestra 4: Reenactamiento Face2Face.jpg"
+                    else -> "Muestra 5: Fotografía HD Original.jpg"
                 }
                 else -> when (index) {
-                    1 -> Triple("Muestra 1: Entrevista Real YouTube (FF++).mp4", 0.06f, 0.03f)
-                    2 -> Triple("Muestra 2: Sincronización Labial LipSync.mp4", 0.94f, 0.87f)
-                    3 -> Triple("Muestra 3: FaceSwap HD Video.mp4", 0.12f, 0.96f)
-                    4 -> Triple("Muestra 4: Avatar IA Multimodal Completo.mp4", 0.95f, 0.97f)
-                    else -> Triple("Muestra 5: Clip de Cámara Frontal Auténtico.mp4", 0.05f, 0.04f)
+                    1 -> "Muestra 1: Entrevista Real YouTube (FF++).mp4"
+                    2 -> "Muestra 2: Sincronización Labial LipSync.mp4"
+                    3 -> "Muestra 3: FaceSwap HD Video.mp4"
+                    4 -> "Muestra 4: Avatar IA Multimodal Completo.mp4"
+                    else -> "Muestra 5: Clip de Cámara Frontal Auténtico.mp4"
                 }
             }
 
             payload = payload.copy(filename = sampleName)
 
-            val audioProb: Float? = targetAudioProb ?: payload.audioSpectrogram?.let {
+            // Inferencia real y exclusiva calculada por los modelos TFLite
+            val audioProb: Float? = payload.audioSpectrogram?.let {
                 audioClassifier.classifySpectrogram(it)
             }
 
-            val visionProb: Float? = targetVisionProb ?: payload.faceKeyframe?.let {
+            val visionProb: Float? = payload.faceKeyframe?.let {
                 visionClassifier.classifyFaceKeyframe(it)
             }
 
@@ -271,19 +279,78 @@ class MainActivity : ComponentActivity() {
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
             payload = payload.copy(filename = "${notif.appName}: ${notif.sender} - ${notif.text}")
 
-            val fusionResult = notif.fusionResult ?: when (notif.mediaType) {
-                MediaType.AUDIO_ONLY -> RiskScorer.calculateGlobalRisk(notif.riskScore / 100f, null)
-                MediaType.IMAGE_ONLY -> RiskScorer.calculateGlobalRisk(null, notif.riskScore / 100f)
-                MediaType.VIDEO_MULTIMODAL -> RiskScorer.calculateGlobalRisk(notif.riskScore / 100f, notif.riskScore / 100f)
-                else -> RiskScorer.calculateGlobalRisk(notif.riskScore / 100f, null)
+            // Inferencia en vivo evaluada por los modelos expertos
+            val audioProb: Float? = payload.audioSpectrogram?.let {
+                audioClassifier.classifySpectrogram(it)
+            }
+            val visionProb: Float? = payload.faceKeyframe?.let {
+                visionClassifier.classifyFaceKeyframe(it)
             }
 
+            val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
             telemetryManager.logThreatDetection(fusionResult, payload.mediaType.name)
 
             lifecycleScope.launch(Dispatchers.Main) {
                 currentPayload = payload
                 currentFusionResult = fusionResult
+                activeScreen = ScreenNav.Scanner
             }
+        }
+    }
+
+    private fun simulateIncomingNotification(mediaType: MediaType, isThreat: Boolean, sender: String, text: String) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            val (audioProb, visionProb) = when (mediaType) {
+                MediaType.AUDIO_ONLY -> {
+                    val asset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    val bitmap = loadAssetBitmap(asset)
+                    val prob = bitmap?.let { audioClassifier.classifySpectrogram(it) }
+                    Pair(prob, null)
+                }
+                MediaType.IMAGE_ONLY -> {
+                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
+                    val bitmap = loadAssetBitmap(asset)
+                    val prob = bitmap?.let { visionClassifier.classifyFaceKeyframe(it) }
+                    Pair(null, prob)
+                }
+                MediaType.VIDEO_MULTIMODAL -> {
+                    val faceAsset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
+                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    val fBitmap = loadAssetBitmap(faceAsset)
+                    val aBitmap = loadAssetBitmap(audioAsset)
+                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it) }
+                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it) }
+                    Pair(aProb, vProb)
+                }
+                else -> Pair(null, null)
+            }
+
+            val fusion = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+            val notif = InterceptedNotification(
+                id = UUID.randomUUID().toString(),
+                appName = "WhatsApp",
+                packageName = "com.whatsapp",
+                sender = sender,
+                text = text,
+                timestamp = System.currentTimeMillis(),
+                mediaType = mediaType,
+                riskScore = fusion.globalRiskPercentage,
+                isThreat = fusion.globalRiskPercentage >= 70f,
+                fusionResult = fusion
+            )
+            NotificationRepository.addNotification(notif)
+            Log.i(TAG, "Notificacion simulada evaluada por TFLite: [WhatsApp] $sender - Riesgo: ${fusion.globalRiskPercentage}%")
+        }
+    }
+
+    private fun loadAssetBitmap(path: String): Bitmap? {
+        return try {
+            assets.open(path).use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cargando asset $path: ${e.message}")
+            null
         }
     }
 

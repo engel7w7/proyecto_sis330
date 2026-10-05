@@ -114,7 +114,8 @@ fun DetectorScreen(
                     fusionResult = fusionResult,
                     isHeatmapEnabled = isHeatmapEnabled,
                     onToggleHeatmap = { isHeatmapEnabled = it },
-                    onNavigateToUpload = { onScreenChange(ScreenNav.Upload) }
+                    onNavigateToUpload = { onScreenChange(ScreenNav.Upload) },
+                    onAnalyzeSample = onAnalyzeSample
                 )
                 is ScreenNav.Upload -> UploadView(
                     payload = payload,
@@ -149,7 +150,8 @@ fun ScannerView(
     fusionResult: FusionResult?,
     isHeatmapEnabled: Boolean,
     onToggleHeatmap: (Boolean) -> Unit,
-    onNavigateToUpload: () -> Unit
+    onNavigateToUpload: () -> Unit,
+    onAnalyzeSample: (String, Int) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
 
@@ -330,6 +332,105 @@ fun ScannerView(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Normal
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Pruebas Rápidas con el Dataset Real (Inferencia TFLite Directa)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Pruebas Rápidas (Inferencia TFLite)",
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Prueba el rendimiento del modelo sobre muestras reales del dataset:",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onAnalyzeSample("audio", 1) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text("Audio Real", fontSize = 11.sp, color = RiskLowGreen, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = { onAnalyzeSample("audio", 2) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text("Audio Clonado", fontSize = 11.sp, color = RiskHighRed, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onAnalyzeSample("image", 1) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text("Rostro Real", fontSize = 11.sp, color = RiskLowGreen, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = { onAnalyzeSample("image", 2) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text("FaceSwap IA", fontSize = 11.sp, color = RiskHighRed, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { onAnalyzeSample("video", 1) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text("Video Real", fontSize = 11.sp, color = RiskLowGreen, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = { onAnalyzeSample("video", 2) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                    ) {
+                        Text("Video Deepfake", fontSize = 11.sp, color = RiskHighRed, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

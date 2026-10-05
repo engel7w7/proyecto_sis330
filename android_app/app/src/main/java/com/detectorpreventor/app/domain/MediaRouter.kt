@@ -49,8 +49,16 @@ class MediaRouter(private val context: Context) {
 
             return@withContext when (sampleType) {
                 "audio" -> {
-                    val asset = if (index % 2 != 0) "samples/audio_real_spec.png" else "samples/audio_fake_spec.png"
-                    val bitmap = loadBitmapFromAsset(asset) ?: generateSpectrogramFromAudio(uri)
+                    val asset = when (index) {
+                        1 -> "samples/01_voz_humana_real_bonafide_1_spec.png"
+                        2 -> "samples/06_clonacion_ia_spoof_tts_1_spec.png"
+                        3 -> "samples/07_clonacion_ia_spoof_tts_2_spec.png"
+                        4 -> "samples/08_clonacion_ia_spoof_tts_3_spec.png"
+                        else -> "samples/02_voz_humana_real_bonafide_2_spec.png"
+                    }
+                    val bitmap = loadBitmapFromAsset(asset)
+                        ?: loadBitmapFromAsset(if (index % 2 != 0) "samples/audio_real_spec.png" else "samples/audio_fake_spec.png")
+                        ?: generateSpectrogramFromAudio(uri)
                     ProcessedMediaPayload(
                         mediaType = MediaType.AUDIO_ONLY,
                         audioSpectrogram = bitmap,
@@ -58,8 +66,15 @@ class MediaRouter(private val context: Context) {
                     )
                 }
                 "image" -> {
-                    val asset = if (index % 2 != 0) "samples/image_real_face.jpg" else "samples/image_fake_face.jpg"
-                    val bitmap = loadBitmapFromAsset(asset) ?: loadBitmapFromAsset("samples/image_fake_face.jpg")
+                    val asset = when (index) {
+                        1 -> "samples/01_retrato_humano_real_1.jpg"
+                        2 -> "samples/06_deepfake_rostro_ia_1.jpg"
+                        3 -> "samples/07_deepfake_rostro_ia_2.jpg"
+                        4 -> "samples/08_deepfake_rostro_ia_3.jpg"
+                        else -> "samples/02_retrato_humano_real_2.jpg"
+                    }
+                    val bitmap = loadBitmapFromAsset(asset)
+                        ?: loadBitmapFromAsset(if (index % 2 != 0) "samples/image_real_face.jpg" else "samples/image_fake_face.jpg")
                     ProcessedMediaPayload(
                         mediaType = MediaType.IMAGE_ONLY,
                         faceKeyframe = bitmap,
@@ -67,12 +82,24 @@ class MediaRouter(private val context: Context) {
                     )
                 }
                 else -> {
-                    val faceAsset = if (index % 2 != 0) "samples/image_real_face.jpg" else "samples/image_fake_face.jpg"
-                    val audioAsset = if (index % 2 != 0) "samples/audio_real_spec.png" else "samples/audio_fake_spec.png"
+                    val faceAsset = when (index) {
+                        1 -> "samples/01_retrato_humano_real_1.jpg"
+                        2 -> "samples/06_deepfake_rostro_ia_1.jpg"
+                        3 -> "samples/08_deepfake_rostro_ia_3.jpg"
+                        4 -> "samples/09_deepfake_rostro_ia_4.jpg"
+                        else -> "samples/03_retrato_humano_real_3.jpg"
+                    }
+                    val audioAsset = when (index) {
+                        1 -> "samples/01_voz_humana_real_bonafide_1_spec.png"
+                        2 -> "samples/06_clonacion_ia_spoof_tts_1_spec.png"
+                        3 -> "samples/03_voz_humana_real_bonafide_3_spec.png"
+                        4 -> "samples/08_clonacion_ia_spoof_tts_3_spec.png"
+                        else -> "samples/04_voz_humana_real_bonafide_4_spec.png"
+                    }
                     ProcessedMediaPayload(
                         mediaType = MediaType.VIDEO_MULTIMODAL,
                         audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: generateSpectrogramFromAudio(uri),
-                        faceKeyframe = loadBitmapFromAsset(faceAsset) ?: loadBitmapFromAsset("samples/image_fake_face.jpg"),
+                        faceKeyframe = loadBitmapFromAsset(faceAsset) ?: loadBitmapFromAsset("samples/image_real_face.jpg"),
                         filename = getFileNameFromUri(uri)
                     )
                 }

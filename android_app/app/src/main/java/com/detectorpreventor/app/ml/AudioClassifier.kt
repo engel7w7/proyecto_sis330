@@ -35,26 +35,40 @@ class AudioClassifier(private val context: Context) {
 
     private fun initInterpreter() {
         try {
-            val options = Interpreter.Options()
-            val compatList = CompatibilityList()
-
-            if (compatList.isDelegateSupportedOnThisDevice) {
-                val delegateOptions = compatList.bestOptionsForThisDevice
-                gpuDelegate = GpuDelegate(delegateOptions)
-                options.addDelegate(gpuDelegate)
-                Log.d(TAG, "GpuDelegate habilitado para AudioClassifier.")
-            } else {
-                options.setNumThreads(4)
-                Log.d(TAG, "CPU Multi-threading (4 hilos) activado para AudioClassifier.")
-            }
-
             val modelBuffer = loadModelFile(MODEL_FILE) ?: loadModelFile(ALT_MODEL_FILE)
             if (modelBuffer != null) {
-                interpreter = Interpreter(modelBuffer, options)
-                isInitialized = true
-                Log.d(TAG, "AudioClassifier inicializado con éxito desde asset.")
+                val compatList = CompatibilityList()
+                var initialized = false
+
+                if (compatList.isDelegateSupportedOnThisDevice) {
+                    try {
+                        val delegateOptions = compatList.bestOptionsForThisDevice
+                        gpuDelegate = GpuDelegate(delegateOptions)
+                        val options = Interpreter.Options().apply {
+                            addDelegate(gpuDelegate)
+                        }
+                        interpreter = Interpreter(modelBuffer, options)
+                        initialized = true
+                        Log.i(TAG, "AudioClassifier TFLite inicializado con éxito usando GpuDelegate.")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "GpuDelegate no compatible con INT8 en audio, reintentando en CPU: ${e.message}")
+                        gpuDelegate?.close()
+                        gpuDelegate = null
+                    }
+                }
+
+                if (!initialized) {
+                    val cpuOptions = Interpreter.Options().apply {
+                        setNumThreads(4)
+                    }
+                    interpreter = Interpreter(modelBuffer, cpuOptions)
+                    initialized = true
+                    Log.i(TAG, "AudioClassifier TFLite inicializado con éxito en CPU multi-hilo (4 threads).")
+                }
+
+                isInitialized = initialized
             } else {
-                Log.w(TAG, "Archivo '$MODEL_FILE' no encontrado en assets. Operando en modo simulación.")
+                Log.e(TAG, "Archivo de modelo '$MODEL_FILE' no encontrado en assets. Operando en modo simulado.")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error al inicializar AudioClassifier TFLite: ${e.message}")
@@ -69,21 +83,33 @@ class AudioClassifier(private val context: Context) {
 
         return try {
             val inputBuffer = convertBitmapToByteBuffer(spectrogramBitmap)
-            val outputBuffer = Array(1) { FloatArray(2) }
+            val currentInterpreter = interpreter ?: return simulateInference(spectrogramBitmap)
 
-            interpreter?.run(inputBuffer, outputBuffer)
+            val outputTensor = currentInterpreter.getOutputTensor(0)
+            val outShape = outputTensor.shape()
+            val numClasses = if (outShape.isNotEmpty()) outShape.last() else 2
 
-            val pReal = outputBuffer[0][0]
-            val pFake = outputBuffer[0][1]
-
-            val expFake = Math.exp(pFake.toDouble())
-            val expReal = Math.exp(pReal.toDouble())
-            val pFakeSoftmax = (expFake / (expReal + expFake)).toFloat()
-
-            Log.d(TAG, "Inferencia Audio TFLite -> Real: $pReal | Fake: $pFake | Prob: $pFakeSoftmax")
-            pFakeSoftmax
+            val prob = if (numClasses == 1) {
+                val outputBuffer = Array(1) { FloatArray(1) }
+                currentInterpreter.run(inputBuffer, outputBuffer)
+                val logit = outputBuffer[0][0]
+                val sigmoid = (1.0 / (1.0 + Math.exp(-logit.toDouble()))).toFloat()
+                Log.d(TAG, "Inferencia Audio TFLite (Sigmoid 1-logit) -> Logit: $logit | Prob: $sigmoid")
+                sigmoid
+            } else {
+                val outputBuffer = Array(1) { FloatArray(numClasses) }
+                currentInterpreter.run(inputBuffer, outputBuffer)
+                val pReal = outputBuffer[0][0]
+                val pFake = outputBuffer[0][1]
+                val expFake = Math.exp(pFake.toDouble())
+                val expReal = Math.exp(pReal.toDouble())
+                val softmax = (expFake / (expReal + expFake)).toFloat()
+                Log.d(TAG, "Inferencia Audio TFLite (Softmax 2-logits) -> Real: $pReal | Fake: $pFake | Prob: $softmax")
+                softmax
+            }
+            prob
         } catch (e: Exception) {
-            Log.e(TAG, "Error durante la inferencia de audio: ${e.message}")
+            Log.e(TAG, "Error durante inferencia de audio TFLite: ${e.message}")
             simulateInference(spectrogramBitmap)
         }
     }
@@ -117,7 +143,20 @@ class AudioClassifier(private val context: Context) {
             val declaredLength = fileDescriptor.declaredLength
             fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
         } catch (e: Exception) {
-            null
+            try {
+                context.assets.open(modelName).use { stream ->
+                    val bytes = stream.readBytes()
+                    val buffer = ByteBuffer.allocateDirect(bytes.size).apply {
+                        order(ByteOrder.nativeOrder())
+                        put(bytes)
+                        rewind()
+                    }
+                    buffer
+                }
+            } catch (e2: Exception) {
+                Log.e(TAG, "Error cargando archivo de modelo TFLite '$modelName': ${e2.message}")
+                null
+            }
         }
     }
 

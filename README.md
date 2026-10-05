@@ -1,11 +1,13 @@
 # Detector Móvil Multimodal de Estafas Digitales (Edge AI)
-**Materia:** SIS-330 (Taller de Grado / Sistemas Expertos)  
+
+**Materia:** SIS-330 (Desarrollo de Aplicaciones Inteligentes)  
 **Docente:** Ing. Pacheco  
-**Universidad:** Universidad Autónoma Gabriel René Moreno (UAGRM)
+**Universidad:** Universidad San Francisco Xavier de Chuquisaca
 
 ---
 
 ## 📌 Descripción del Proyecto
+
 Sistema inteligente móvil para la detección y prevención en tiempo real de estafas digitales y fraudes audiovisuales (Deepfakes de audio y video) en canales de mensajería (WhatsApp, Telegram).
 
 El sistema opera bajo un enfoque de **Edge AI** (inteligencia artificial ejecutada localmente en el dispositivo móvil sin enviar datos a servidores externos, garantizando privacidad absoluta) mediante **Fusión Tardía (Score-Level Fusion)** y la **Regla 3/5** para mitigación de falsos positivos.
@@ -61,24 +63,29 @@ proyecto_sis330/
 El proyecto utiliza el entorno Conda `env_sis421` con PyTorch y TensorFlow Lite.
 
 1. **Activar el entorno:**
+
    ```bash
    conda activate env_sis421
    ```
 
 2. **Revisar el Notebook de Resultados y Métricas:**
    Abrir el notebook con Jupyter o en VS Code:
+
    ```bash
    jupyter notebook detector_multimodal_edge/notebooks/experimentos_resultados.ipynb
    ```
+
    En él se encuentran:
    * Las **Matrices de Confusión** de ambos modelos graficadas con `seaborn` y `matplotlib`.
    * El cálculo e impresión formal de **Accuracy, Precision, Recall y F1-Score**.
    * La **justificación teórica en ciberseguridad** de por qué *Precision* es la métrica más crítica.
 
 3. **Re-generar / Cuantizar los Modelos a TFLite INT8:**
+
    ```bash
    python detector_multimodal_edge/src/export/quantize_tflite.py
    ```
+
    *Convierte y optimiza los modelos a formato `.tflite` (INT8) y los copia automáticamente a `android_app/app/src/main/assets/`.*
 
 ---
@@ -90,7 +97,8 @@ El proyecto utiliza el entorno Conda `env_sis421` con PyTorch y TensorFlow Lite.
 3. Conectar un dispositivo Android o iniciar el emulador (Android 8.0 / API 26 o superior).
 4. Presionar **Run 'app'** (`Shift + F10`).
 
-#### Demostración en Vivo:
+#### Demostración en Vivo
+
 * **Intercepción automática:** Al recibir o compartir un audio (`.opus`, `.mp3`) o imagen/video desde WhatsApp hacia la app, se activa el análisis multimodal.
 * **UI Modo Oscuro:** Muestra en pantalla el texto prominente: `"Riesgo de Estafa: [Score Global]%"`, el desglose de inferencia y los botones de mitigación:
   * 🔴 **"Bloquear y Reportar"** (Acción de peligro / aislamiento del contacto).
@@ -102,12 +110,14 @@ El proyecto utiliza el entorno Conda `env_sis421` con PyTorch y TensorFlow Lite.
 ## 🧠 Algoritmos Implementados
 
 ### 1. Modelos Expertos Edge
+
 * **Experto de Audio:** `MobileNetV3-Small INT8` (Entrada: Espectrograma Mel 224x224x3).
   * *Accuracy:* 81.79% | *Precision:* 78.28% | *Recall:* 99.96% | *F1-Score:* 87.80%
 * **Experto de Visión:** `EfficientNet-B0 INT8` (Entrada: Keyframe facial 224x224x3).
   * *Accuracy:* 97.17% | *Precision:* 95.40% | *Recall:* 96.25% | *F1-Score:* 95.82%
 
 ### 2. Lógica de Fusión (`RiskScorer.kt`)
+
 * **Regla 3/5:** Exige que al menos 3 de los 5 keyframes analizados superen el umbral de fraude para validar manipulación facial, evitando falsos positivos causados por iluminación o compresión.
 * **Score-Level Fusion:**
   $$\text{Score Global} = (0.55 \times P_{\text{audio}}) + (0.45 \times P_{\text{visión}})$$

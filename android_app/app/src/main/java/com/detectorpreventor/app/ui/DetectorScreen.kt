@@ -25,8 +25,8 @@ import androidx.compose.ui.unit.sp
 import android.content.Intent
 import android.provider.Settings
 import com.detectorpreventor.app.domain.FusionResult
-import com.detectorpreventor.app.domain.MediaPayload
 import com.detectorpreventor.app.domain.MediaType
+import com.detectorpreventor.app.domain.ProcessedMediaPayload
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.notifications.InterceptedNotification
 import com.detectorpreventor.app.notifications.NotificationMonitorService
@@ -42,13 +42,10 @@ sealed class ScreenNav(val route: String, val title: String, val icon: ImageVect
     object SystemInfo : ScreenNav("info", "MLOps", Icons.Default.Memory)
 }
 
-/**
- * Pantalla principal que integra la barra de navegación inferior y las cinco vistas principales.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetectorScreen(
-    payload: MediaPayload?,
+    payload: ProcessedMediaPayload?,
     fusionResult: FusionResult?,
     activeScreen: ScreenNav = ScreenNav.Scanner,
     onScreenChange: (ScreenNav) -> Unit = {},
@@ -141,12 +138,9 @@ fun DetectorScreen(
     }
 }
 
-/**
- * Vista de escáner y resultado de análisis.
- */
 @Composable
 fun ScannerView(
-    payload: MediaPayload?,
+    payload: ProcessedMediaPayload?,
     fusionResult: FusionResult?,
     isHeatmapEnabled: Boolean,
     onToggleHeatmap: (Boolean) -> Unit,
@@ -338,7 +332,6 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Pruebas Rápidas con el Dataset Real (Inferencia TFLite Directa)
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(12.dp),
@@ -498,12 +491,9 @@ fun ScannerView(
     }
 }
 
-/**
- * Vista de carga libre de archivos multimedia.
- */
 @Composable
 fun UploadView(
-    payload: MediaPayload?,
+    payload: ProcessedMediaPayload?,
     onSelectFile: () -> Unit,
     onNavigateToScanner: () -> Unit
 ) {
@@ -631,9 +621,6 @@ fun UploadView(
     }
 }
 
-/**
- * Vista de dataset de pruebas académicas.
- */
 @Composable
 fun BenchmarkView(
     onAnalyzeSample: (String, Int) -> Unit
@@ -821,9 +808,6 @@ fun BenchmarkView(
     }
 }
 
-/**
- * Vista de información del sistema y resumen de la arquitectura.
- */
 @Composable
 fun SystemInfoView() {
     Column(
@@ -908,9 +892,6 @@ fun SystemInfoView() {
     }
 }
 
-/**
- * Vista de interceptación y monitoreo de notificaciones de WhatsApp / Telegram en segundo plano.
- */
 @Composable
 fun NotificationsView(
     onInspectNotification: (InterceptedNotification) -> Unit,
@@ -940,7 +921,6 @@ fun NotificationsView(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // Titulo y Estado Real
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -990,7 +970,6 @@ fun NotificationsView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Tarjeta de Control del Servicio y Permisos
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(12.dp),
@@ -1143,7 +1122,6 @@ fun NotificationsView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Simulador de Pruebas Rápidas
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(12.dp),
@@ -1281,7 +1259,6 @@ fun NotificationsView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Historial de Notificaciones
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

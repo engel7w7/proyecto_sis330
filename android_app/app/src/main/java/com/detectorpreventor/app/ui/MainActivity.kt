@@ -33,10 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-/**
- * Actividad principal de la aplicación.
- * Gestiona el flujo de selección de archivos, recepción de intents y coordinación de la inferencia.
- */
 class MainActivity : ComponentActivity() {
 
     companion object {

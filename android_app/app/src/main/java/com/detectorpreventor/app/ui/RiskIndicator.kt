@@ -18,9 +18,6 @@ import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.ui.theme.*
 
-/**
- * Componente UI para presentar la tarjeta del veredicto final de riesgo.
- */
 @Composable
 fun RiskIndicatorCard(
     fusionResult: FusionResult,

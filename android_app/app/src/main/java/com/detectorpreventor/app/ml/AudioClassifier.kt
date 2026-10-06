@@ -11,10 +11,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
-/**
- * Clasificador TFLite para el Modelo Experto de Audio (MobileNetV3-Small INT8).
- * Configurado opcionalmente con aceleración por GPU Delegate.
- */
 class AudioClassifier(private val context: Context) {
 
     companion object {

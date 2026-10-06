@@ -16,22 +16,10 @@ import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
 import java.util.UUID
 
-/**
- * Servicio de Android para interceptar notificaciones de mensajeria (WhatsApp, Telegram, etc.)
- * e inspeccionar posibles amenazas de audios, imagenes o videos falsificados en tiempo real.
- * La inferencia se realiza exclusivamente mediante los modelos expertos TFLite (INT8).
- * Los stickers se descartan inmediatamente y no son procesados.
- */
 class NotificationMonitorService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "NotificationMonitor"
-
-        /**
-         * Fuerza al sistema operativo a reevaluar y re-vincular el NotificationListenerService.
-         * Resuelve el problema conocido de Android donde el servicio es desvinculado silenciosamente
-         * por optimizacion de bateria, ahorro de energia o tras reinicios de la aplicacion.
-         */
         fun ensureServiceBound(context: Context) {
             if (!NotificationRepository.isPermissionGranted(context)) {
                 NotificationRepository.setServiceConnected(false)
@@ -351,9 +339,5 @@ class NotificationMonitorService : NotificationListenerService() {
             Log.e(TAG, "Error cargando asset $path: ${e.message}")
             null
         }
-    }
-
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        super.onNotificationRemoved(sbn)
     }
 }

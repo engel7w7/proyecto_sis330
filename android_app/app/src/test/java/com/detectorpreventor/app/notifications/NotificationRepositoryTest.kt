@@ -85,12 +85,10 @@ class NotificationRepositoryTest {
         NotificationRepository.addNotification(notif1)
         assertEquals(1, NotificationRepository.notifications.value.size)
 
-        // Intento de duplicado inmediato (mismo sender y text dentro de 2000ms)
         val duplicate = notif1.copy(id = UUID.randomUUID().toString(), timestamp = now + 500L)
         NotificationRepository.addNotification(duplicate)
         assertEquals(1, NotificationRepository.notifications.value.size, "El duplicado inmediato debio ser descartado")
 
-        // Mensaje diferente debe agregarse correctamente
         val notif2 = notif1.copy(
             id = UUID.randomUUID().toString(),
             text = "Foto recibida",

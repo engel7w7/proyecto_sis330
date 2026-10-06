@@ -3,10 +3,6 @@ package com.detectorpreventor.app.domain
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 
-/**
- * Pruebas unitarias para validar el motor de inferencia multimodal,
- * reglas de descarte de stickers, pesos de fusión tardía y asignación de niveles de riesgo.
- */
 class MultimodalDetectionTest {
 
     @Test

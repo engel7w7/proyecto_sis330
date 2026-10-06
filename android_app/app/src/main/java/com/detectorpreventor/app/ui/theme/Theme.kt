@@ -5,7 +5,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Paleta Modo Oscuro Premium (Dark Glassmorphism / Cybersecurity Aesthetic)
 val BackgroundDark = Color(0xFF0B0F19)
 val SurfaceDark = Color(0xFF161E2E)
 val CardBorder = Color(0xFF2D3748)

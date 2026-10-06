@@ -16,19 +16,11 @@ data class FusionResult(
     val diagnosticSummary: String
 )
 
-/**
- * Módulo de Fusión Tardía (Score-Level Fusion):
- * Combina ponderadamente las probabilidades calculadas por los modelos expertos de Audio y Visión.
- */
 object RiskScorer {
 
     private const val DEFAULT_WEIGHT_AUDIO = 0.6f
     private const val DEFAULT_WEIGHT_VISION = 0.4f
 
-    /**
-     * Calcula el porcentaje de riesgo global a partir de las probabilidades individuales.
-     * Fórmula: Score = (w_a * P_audio) + (w_v * P_vision)
-     */
     fun calculateGlobalRisk(
         audioProb: Float?,
         visionProb: Float?,

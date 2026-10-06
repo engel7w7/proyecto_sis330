@@ -32,9 +32,6 @@ import androidx.compose.ui.unit.sp
 import com.detectorpreventor.app.ui.theme.CardBorder
 import com.detectorpreventor.app.ui.theme.SurfaceDark
 
-/**
- * Componente UI para visualización del mapa de calor explicativo Grad-CAM sobre la imagen o espectrograma.
- */
 @Composable
 fun HeatmapOverlay(
     bitmap: Bitmap?,
@@ -145,7 +142,6 @@ fun HeatmapOverlay(
                             )
                         )
                     } else {
-                        // Verificación de autenticidad: marco verde esmeralda y gradiente tenue
                         val authGrad = Brush.radialGradient(
                             colors = listOf(
                                 Color(0xFF10B981).copy(alpha = 0.20f),

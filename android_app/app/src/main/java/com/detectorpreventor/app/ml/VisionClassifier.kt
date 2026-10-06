@@ -11,10 +11,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 
-/**
- * Clasificador TFLite para el Modelo Experto de Visión (EfficientNet-B0 INT8).
- * Configurado opcionalmente con aceleración por GPU Delegate.
- */
 class VisionClassifier(private val context: Context) {
 
     companion object {

@@ -21,8 +21,6 @@ enum class MediaType {
     UNKNOWN
 }
 
-typealias MediaPayload = ProcessedMediaPayload
-
 data class ProcessedMediaPayload(
     val mediaType: MediaType,
     val audioSpectrogram: Bitmap? = null,
@@ -30,10 +28,6 @@ data class ProcessedMediaPayload(
     val filename: String = ""
 )
 
-/**
- * Enrutador de medios locales: Clasifica archivos multimedia entrantes (audio, imagen o video)
- * y extrae fotogramas o genera espectrogramas para el procesamiento de los clasificadores.
- */
 class MediaRouter(private val context: Context) {
 
     companion object {
@@ -358,23 +352,6 @@ class MediaRouter(private val context: Context) {
         paint.textSize = 13f
         paint.textAlign = Paint.Align.CENTER
         canvas.drawText(label, 112f, 202f, paint)
-        return bitmap
-    }
-
-    private fun generatePlaceholderBitmap(label: String): Bitmap {
-        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint().apply {
-            color = Color.DKGRAY
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(0f, 0f, 224f, 224f, paint)
-        paint.apply {
-            color = Color.WHITE
-            textSize = 20f
-            textAlign = Paint.Align.CENTER
-        }
-        canvas.drawText(label, 112f, 112f, paint)
         return bitmap
     }
 

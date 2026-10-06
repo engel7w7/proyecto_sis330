@@ -104,7 +104,6 @@ object NotificationRepository {
     private const val MAX_SAVED_ITEMS = 50
     private const val DEDUPLICATION_WINDOW_MS = 2000L
 
-    private var appContext: Context? = null
     private var prefs: SharedPreferences? = null
 
     private val _notifications = MutableStateFlow<List<InterceptedNotification>>(emptyList())
@@ -118,7 +117,6 @@ object NotificationRepository {
 
     fun init(context: Context) {
         val app = context.applicationContext
-        appContext = app
         prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadFromStorage()
     }
@@ -134,7 +132,6 @@ object NotificationRepository {
             }
             _notifications.value = list
         } catch (e: Exception) {
-            // Ignorar corrupción y continuar
         }
     }
 
@@ -145,7 +142,6 @@ object NotificationRepository {
             list.forEach { jsonArray.put(it.toJson()) }
             p.edit().putString(KEY_NOTIFS, jsonArray.toString()).apply()
         } catch (e: Exception) {
-            // Manejo de excepción silenciosa
         }
     }
 

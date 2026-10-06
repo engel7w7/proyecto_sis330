@@ -24,7 +24,6 @@ import com.detectorpreventor.app.domain.ProcessedMediaPayload
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
-import com.detectorpreventor.app.telemetry.FirebaseTelemetryManager
 import com.detectorpreventor.app.notifications.InterceptedNotification
 import com.detectorpreventor.app.notifications.NotificationMonitorService
 import com.detectorpreventor.app.notifications.NotificationRepository
@@ -47,7 +46,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var mediaRouter: MediaRouter
     private lateinit var audioClassifier: AudioClassifier
     private lateinit var visionClassifier: VisionClassifier
-    private lateinit var telemetryManager: FirebaseTelemetryManager
 
     private var currentPayload by mutableStateOf<ProcessedMediaPayload?>(null)
     private var currentFusionResult by mutableStateOf<FusionResult?>(null)
@@ -69,7 +67,6 @@ class MainActivity : ComponentActivity() {
         mediaRouter = MediaRouter(applicationContext)
         audioClassifier = AudioClassifier(applicationContext)
         visionClassifier = VisionClassifier(applicationContext)
-        telemetryManager = FirebaseTelemetryManager(applicationContext)
 
         handleIncomingIntent(intent)
 
@@ -174,7 +171,6 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
-                telemetryManager.logThreatDetection(fusionResult, payload.mediaType.name)
 
                 lifecycleScope.launch(Dispatchers.Main) {
                     currentPayload = payload
@@ -232,7 +228,6 @@ class MainActivity : ComponentActivity() {
             }
 
             val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
-            telemetryManager.logThreatDetection(fusionResult, payload.mediaType.name)
 
             lifecycleScope.launch(Dispatchers.Main) {
                 currentPayload = payload
@@ -286,7 +281,6 @@ class MainActivity : ComponentActivity() {
             }
 
             val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
-            telemetryManager.logThreatDetection(fusionResult, payload.mediaType.name)
 
             lifecycleScope.launch(Dispatchers.Main) {
                 currentPayload = payload

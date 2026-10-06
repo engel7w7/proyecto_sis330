@@ -36,7 +36,6 @@ proyecto_sis330/
 │               ├── domain/             # MediaRouter y RiskScorer (Fusión y Reglas)
 │               ├── ml/                 # AudioClassifier y VisionClassifier (TFLite)
 │               ├── notifications/      # NotificationMonitorService e Interceptor WhatsApp
-│               ├── telemetry/          # Telemetría local
 │               └── ui/                 # DetectorScreen, HeatmapOverlay Grad-CAM, MainActivity
 │
 └── detector_multimodal_edge/           # Entorno Python (Entrenamiento, Cuantización y MLOps)

@@ -1,7 +1,7 @@
 # Detector Móvil Multimodal de Estafas Digitales (Edge AI)
 
 **Materia:** SIS-330 (Desarrollo de Aplicaciones Inteligentes)  
-**Docente:** Ing. Pacheco  
+**Docente:** Ing. Pacheco Lora Carlos Walter
 **Universidad:** Universidad San Francisco Xavier de Chuquisaca
 
 ---

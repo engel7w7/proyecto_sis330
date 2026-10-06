@@ -223,7 +223,6 @@ class MainActivity : ComponentActivity() {
 
             payload = payload.copy(filename = sampleName)
 
-            // Inferencia real y exclusiva calculada por los modelos TFLite
             val audioProb: Float? = payload.audioSpectrogram?.let {
                 audioClassifier.classifySpectrogram(it)
             }
@@ -279,7 +278,6 @@ class MainActivity : ComponentActivity() {
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
             payload = payload.copy(filename = "${notif.appName}: ${notif.sender} - ${notif.text}")
 
-            // Inferencia en vivo evaluada por los modelos expertos
             val audioProb: Float? = payload.audioSpectrogram?.let {
                 audioClassifier.classifySpectrogram(it)
             }

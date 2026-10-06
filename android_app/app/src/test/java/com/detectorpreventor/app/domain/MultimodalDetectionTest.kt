@@ -21,7 +21,6 @@ class MultimodalDetectionTest {
             customWeightVision = 0.4f
         )
 
-        // 0.6 * 0.95 + 0.4 * 0.90 = 0.57 + 0.36 = 0.93 -> 93%
         assertEquals(93.0f, result.globalRiskPercentage, 0.05f)
         assertEquals(RiskLevel.ALTO, result.riskLevel)
         assertEquals(0.6f, result.weightAudio, 0.01f)
@@ -40,7 +39,6 @@ class MultimodalDetectionTest {
             customWeightVision = 0.4f
         )
 
-        // 0.6 * 0.04 + 0.4 * 0.03 = 0.024 + 0.012 = 0.036 -> 3.6%
         assertEquals(3.6f, result.globalRiskPercentage, 0.1f)
         assertEquals(RiskLevel.BAJO, result.riskLevel)
     }
@@ -77,21 +75,15 @@ class MultimodalDetectionTest {
 
     @Test
     fun testRiskThresholdCategorization() {
-        // < 30% -> BAJO
         assertEquals(RiskLevel.BAJO, RiskScorer.calculateGlobalRisk(0.25f, null).riskLevel)
-
-        // 30% - 70% -> MEDIO
         assertEquals(RiskLevel.MEDIO, RiskScorer.calculateGlobalRisk(0.30f, null).riskLevel)
         assertEquals(RiskLevel.MEDIO, RiskScorer.calculateGlobalRisk(0.65f, null).riskLevel)
-
-        // >= 70% -> ALTO
         assertEquals(RiskLevel.ALTO, RiskScorer.calculateGlobalRisk(0.70f, null).riskLevel)
         assertEquals(RiskLevel.ALTO, RiskScorer.calculateGlobalRisk(0.95f, null).riskLevel)
     }
 
     @Test
     fun testStickerExclusionLogicRule() {
-        // Validación de la regla de exclusión estricta de stickers
         fun shouldIgnoreNotification(content: String, mimeType: String?): Boolean {
             val isSticker = content.contains("sticker", ignoreCase = true) ||
                     (mimeType != null && mimeType.contains("webp", ignoreCase = true))

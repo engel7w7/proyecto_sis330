@@ -123,7 +123,6 @@ class NotificationMonitorService : NotificationListenerService() {
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
-        // Extraer todos los campos de texto posibles
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
         val conversationTitle = extras.getCharSequence("android.conversationTitle")?.toString()?.trim()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
@@ -134,7 +133,6 @@ class NotificationMonitorService : NotificationListenerService() {
             .mapNotNull { it?.toString()?.trim() }
             .filter { it.isNotBlank() }
 
-        // Extraer mensajes individuales de MessagingStyle
         val styleMessages = mutableListOf<String>()
         var messageSender: String? = null
         var isMediaFromMessagingStyle = false
@@ -178,7 +176,6 @@ class NotificationMonitorService : NotificationListenerService() {
             }
         }
 
-        // Combinar todos los textos encontrados
         val allContentList = mutableListOf<String>()
         if (text.isNotBlank()) allContentList.add(text)
         if (bigText.isNotBlank()) allContentList.add(bigText)
@@ -188,7 +185,6 @@ class NotificationMonitorService : NotificationListenerService() {
 
         val combinedContent = allContentList.distinct().joinToString(" ")
 
-        // Filtrar notificaciones continuas del sistema de WhatsApp
         val isSystemStatusNotification = sbn.isOngoing && (
                 combinedContent.contains("WhatsApp Web", ignoreCase = true) ||
                 combinedContent.contains("copia de seguridad", ignoreCase = true) ||
@@ -200,16 +196,14 @@ class NotificationMonitorService : NotificationListenerService() {
 
         if (combinedContent.isBlank() && rawTitle.isNullOrBlank()) return
 
-        // 1. REGLA ESTRICTA DE STICKERS: Descartar inmediatamente sin procesar
         val isSticker = combinedContent.contains("sticker", ignoreCase = true) ||
                 styleMessages.any { it.contains("sticker", ignoreCase = true) }
 
         if (isSticker) {
-            Log.d(TAG, "Notificacion ignorada: Sticker detectado (descartado segun especificacion).")
+            Log.d(TAG, "Notificacion ignorada: Sticker detectado.")
             return
         }
 
-        // 2. DETECCION Y CONTROL POR TIPO DE MEDIO DE INTERES (Imagenes, Audios y Videos)
         val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
                 combinedContent.contains("video", ignoreCase = true) ||
                 combinedContent.contains("vídeo", ignoreCase = true) ||
@@ -235,13 +229,10 @@ class NotificationMonitorService : NotificationListenerService() {
                 combinedContent.contains("image", ignoreCase = true)
         )
 
-        // Si no es imagen, audio ni video, descartar (solo procesar los tipos requeridos)
         if (!isVideoRelated && !isAudioRelated && !isImageRelated) {
-            Log.d(TAG, "Notificacion omitida: No corresponde a imagen, audio ni video.")
             return
         }
 
-        // Determinar remitente adecuado
         val sender = when {
             !messageSender.isNullOrBlank() -> messageSender
             !conversationTitle.isNullOrBlank() -> conversationTitle
@@ -256,7 +247,6 @@ class NotificationMonitorService : NotificationListenerService() {
             else -> "Mensajeria"
         }
 
-        // Deteccion de patrones de ingenieria social / contexto sospechoso
         val fraudKeywords = listOf(
             "urgente", "deposito", "depósito", "transferencia", "dinero", "banco",
             "tarjeta", "ganaste", "premio", "cuenta bloqueada", "mama", "mamá",
@@ -267,7 +257,6 @@ class NotificationMonitorService : NotificationListenerService() {
         val isUnknownSender = sender.startsWith("+") || sender.contains("desconocido", ignoreCase = true)
         val suspiciousContext = containsFraudKeyword || isUnknownSender
 
-        // 3. INFERENCIA REAL MEDIANTE MODELOS TFLITE (Sin probabilidades hardcodeadas)
         val vClassifier = visionClassifier ?: VisionClassifier(applicationContext).also { visionClassifier = it }
         val aClassifier = audioClassifier ?: AudioClassifier(applicationContext).also { audioClassifier = it }
 
@@ -316,7 +305,6 @@ class NotificationMonitorService : NotificationListenerService() {
             else -> return
         }
 
-        // FUSION TARDIA: Los modelos deciden el riesgo global ponderado
         val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
 
         val item = InterceptedNotification(

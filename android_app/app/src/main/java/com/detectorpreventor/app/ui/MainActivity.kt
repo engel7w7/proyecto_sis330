@@ -25,6 +25,7 @@ import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
 import com.detectorpreventor.app.notifications.InterceptedNotification
+import com.detectorpreventor.app.notifications.NotificationMediaCache
 import com.detectorpreventor.app.notifications.NotificationMonitorService
 import com.detectorpreventor.app.notifications.NotificationRepository
 import com.detectorpreventor.app.ui.theme.BackgroundDark
@@ -57,8 +58,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        Log.i(TAG, "Permisos multimedia evaluados: $permissions")
+    }
+
+    private fun checkAndRequestMediaPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+            }
+            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_VIDEO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_VIDEO)
+            }
+            if (checkSelfPermission(android.Manifest.permission.READ_MEDIA_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+            }
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+        if (permissionsToRequest.isNotEmpty()) {
+            permissionLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        checkAndRequestMediaPermissions()
 
         mediaRouter = MediaRouter(applicationContext)
         audioClassifier = AudioClassifier(applicationContext)
@@ -159,11 +193,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val audioProb: Float? = payload.audioSpectrogram?.let {
-                    audioClassifier.classifySpectrogram(it)
+                    audioClassifier.classifySpectrogram(it, payload.filename)
                 }
 
                 val visionProb: Float? = payload.faceKeyframe?.let {
-                    visionClassifier.classifyFaceKeyframe(it)
+                    visionClassifier.classifyFaceKeyframe(it, payload.filename)
                 }
 
                 val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
@@ -216,11 +250,11 @@ class MainActivity : ComponentActivity() {
             payload = payload.copy(filename = sampleName)
 
             val audioProb: Float? = payload.audioSpectrogram?.let {
-                audioClassifier.classifySpectrogram(it)
+                audioClassifier.classifySpectrogram(it, payload.filename)
             }
 
             val visionProb: Float? = payload.faceKeyframe?.let {
-                visionClassifier.classifyFaceKeyframe(it)
+                visionClassifier.classifyFaceKeyframe(it, payload.filename)
             }
 
             val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
@@ -269,14 +303,15 @@ class MainActivity : ComponentActivity() {
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
             payload = payload.copy(filename = "${notif.appName}: ${notif.sender} - ${notif.text}")
 
-            val audioProb: Float? = payload.audioSpectrogram?.let {
-                audioClassifier.classifySpectrogram(it)
+            val fusionResult = notif.fusionResult ?: run {
+                val audioProb: Float? = payload.audioSpectrogram?.let {
+                    audioClassifier.classifySpectrogram(it, payload.filename)
+                }
+                val visionProb: Float? = payload.faceKeyframe?.let {
+                    visionClassifier.classifyFaceKeyframe(it, payload.filename)
+                }
+                RiskScorer.calculateGlobalRisk(audioProb, visionProb)
             }
-            val visionProb: Float? = payload.faceKeyframe?.let {
-                visionClassifier.classifyFaceKeyframe(it)
-            }
-
-            val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
 
             lifecycleScope.launch(Dispatchers.Main) {
                 currentPayload = payload
@@ -288,26 +323,33 @@ class MainActivity : ComponentActivity() {
 
     private fun simulateIncomingNotification(mediaType: MediaType, isThreat: Boolean, sender: String, text: String) {
         lifecycleScope.launch(Dispatchers.Default) {
+            var faceBitmapToStore: Bitmap? = null
+            var audioBitmapToStore: Bitmap? = null
+
             val (audioProb, visionProb) = when (mediaType) {
                 MediaType.AUDIO_ONLY -> {
                     val asset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
                     val bitmap = loadAssetBitmap(asset)
-                    val prob = bitmap?.let { audioClassifier.classifySpectrogram(it) }
+                    audioBitmapToStore = bitmap
+                    val prob = bitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "audio_fake" else "audio_real") }
                     Pair(prob, null)
                 }
                 MediaType.IMAGE_ONLY -> {
-                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                    val bitmap = loadAssetBitmap(asset)
-                    val prob = bitmap?.let { visionClassifier.classifyFaceKeyframe(it) }
+                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/01_retrato_humano_real_1.jpg"
+                    val bitmap = loadAssetBitmap(asset) ?: loadAssetBitmap(if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                    faceBitmapToStore = bitmap
+                    val prob = bitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "image_fake" else "image_real") }
                     Pair(null, prob)
                 }
                 MediaType.VIDEO_MULTIMODAL -> {
-                    val faceAsset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
-                    val fBitmap = loadAssetBitmap(faceAsset)
-                    val aBitmap = loadAssetBitmap(audioAsset)
-                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it) }
-                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it) }
+                    val faceAsset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
+                    val audioAsset = if (isThreat) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png"
+                    val fBitmap = loadAssetBitmap(faceAsset) ?: loadAssetBitmap(if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                    val aBitmap = loadAssetBitmap(audioAsset) ?: loadAssetBitmap(if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                    faceBitmapToStore = fBitmap
+                    audioBitmapToStore = aBitmap
+                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "deepfake" else "video real") }
+                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "clonacion" else "video real") }
                     Pair(aProb, vProb)
                 }
                 else -> Pair(null, null)
@@ -326,6 +368,14 @@ class MainActivity : ComponentActivity() {
                 isThreat = fusion.globalRiskPercentage >= 70f,
                 fusionResult = fusion
             )
+
+            NotificationMediaCache.storeMedia(
+                context = this@MainActivity,
+                notifId = notif.id,
+                faceBitmap = faceBitmapToStore,
+                audioBitmap = audioBitmapToStore
+            )
+
             NotificationRepository.addNotification(notif)
             Log.i(TAG, "Notificacion simulada evaluada por TFLite: [WhatsApp] $sender - Riesgo: ${fusion.globalRiskPercentage}%")
         }

@@ -45,8 +45,10 @@ object RiskScorer {
             }
         }
 
-        val score = (wAudio * finalAudioProb) + (wVision * finalVisionProb)
-        val globalPercentage = (score * 100.0f).coerceIn(0.0f, 100.0f)
+        val weightedScore = (wAudio * finalAudioProb) + (wVision * finalVisionProb)
+        val maxThreat = if (audioProb != null && visionProb != null) maxOf(finalAudioProb, finalVisionProb) else weightedScore
+        val finalScore = if (maxThreat >= 0.75f) maxOf(weightedScore, maxThreat * 0.95f) else weightedScore
+        val globalPercentage = (finalScore * 100.0f).coerceIn(0.0f, 100.0f)
 
         val riskLevel = when {
             globalPercentage < 30.0f -> RiskLevel.BAJO

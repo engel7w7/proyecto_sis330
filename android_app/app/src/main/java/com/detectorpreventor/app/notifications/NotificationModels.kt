@@ -3,6 +3,7 @@ package com.detectorpreventor.app.notifications
 import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.provider.Settings
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaType
@@ -15,6 +16,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 data class InterceptedNotification(
     val id: String,
@@ -102,7 +104,7 @@ object NotificationRepository {
     private const val PREFS_NAME = "detector_notifications_store"
     private const val KEY_NOTIFS = "saved_notifications"
     private const val MAX_SAVED_ITEMS = 50
-    private const val DEDUPLICATION_WINDOW_MS = 2000L
+    private const val DEDUPLICATION_WINDOW_MS = 8000L
 
     private var prefs: SharedPreferences? = null
 
@@ -154,16 +156,33 @@ object NotificationRepository {
     }
 
     fun addNotification(item: InterceptedNotification) {
-        val currentList = _notifications.value
+        val currentList = _notifications.value.toMutableList()
 
-        val isDuplicate = currentList.firstOrNull()?.let { last ->
-            last.packageName == item.packageName &&
-                    last.sender == item.sender &&
-                    last.text == item.text &&
-                    (item.timestamp - last.timestamp) < DEDUPLICATION_WINDOW_MS
-        } ?: false
+        val existingIndex = currentList.indexOfFirst { existing ->
+            existing.packageName == item.packageName &&
+                    existing.sender.equals(item.sender, ignoreCase = true) &&
+                    kotlin.math.abs(item.timestamp - existing.timestamp) < DEDUPLICATION_WINDOW_MS
+        }
 
-        if (isDuplicate) return
+        if (existingIndex != -1) {
+            val existing = currentList[existingIndex]
+            val existingHasMedia = NotificationMediaCache.hasMedia(existing.id)
+            val newHasMedia = NotificationMediaCache.hasMedia(item.id)
+
+            if (!existingHasMedia && newHasMedia) {
+                currentList[existingIndex] = item
+                _notifications.value = currentList
+                persistToStorage(currentList)
+                return
+            } else if (existingHasMedia && !newHasMedia) {
+                return
+            } else {
+                currentList[existingIndex] = item
+                _notifications.value = currentList
+                persistToStorage(currentList)
+                return
+            }
+        }
 
         val updatedList = (listOf(item) + currentList).take(MAX_SAVED_ITEMS)
         _notifications.value = updatedList
@@ -190,3 +209,87 @@ object NotificationRepository {
         return false
     }
 }
+
+object NotificationMediaCache {
+    private val faceCache = ConcurrentHashMap<String, Bitmap>()
+    private val audioCache = ConcurrentHashMap<String, Bitmap>()
+    private val assetNameCache = ConcurrentHashMap<String, String>()
+
+    fun storeMedia(
+        context: Context? = null,
+        notifId: String,
+        faceBitmap: Bitmap? = null,
+        audioBitmap: Bitmap? = null,
+        assetName: String? = null
+    ) {
+        faceBitmap?.let {
+            faceCache[notifId] = it
+            if (context != null) saveBitmapToCache(context, "face_$notifId.png", it)
+        }
+        audioBitmap?.let {
+            audioCache[notifId] = it
+            if (context != null) saveBitmapToCache(context, "audio_$notifId.png", it)
+        }
+        assetName?.let { assetNameCache[notifId] = it }
+    }
+
+    fun hasMedia(notifId: String): Boolean =
+        faceCache.containsKey(notifId) || audioCache.containsKey(notifId)
+
+    fun getFaceBitmap(context: Context? = null, notifId: String): Bitmap? {
+        faceCache[notifId]?.let { return it }
+        if (context != null) {
+            loadBitmapFromCache(context, "face_$notifId.png")?.let {
+                faceCache[notifId] = it
+                return it
+            }
+        }
+        return null
+    }
+
+    fun getFaceBitmap(notifId: String): Bitmap? = getFaceBitmap(null, notifId)
+
+    fun getAudioBitmap(context: Context? = null, notifId: String): Bitmap? {
+        audioCache[notifId]?.let { return it }
+        if (context != null) {
+            loadBitmapFromCache(context, "audio_$notifId.png")?.let {
+                audioCache[notifId] = it
+                return it
+            }
+        }
+        return null
+    }
+
+    fun getAudioBitmap(notifId: String): Bitmap? = getAudioBitmap(null, notifId)
+
+    fun getAssetName(notifId: String): String? = assetNameCache[notifId]
+
+    private fun saveBitmapToCache(context: Context, filename: String, bitmap: Bitmap) {
+        try {
+            val file = java.io.File(context.cacheDir, filename)
+            java.io.FileOutputStream(file).use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+            }
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun loadBitmapFromCache(context: Context, filename: String): Bitmap? {
+        return try {
+            val file = java.io.File(context.cacheDir, filename)
+            if (file.exists() && file.length() > 0) {
+                android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun clear() {
+        faceCache.clear()
+        audioCache.clear()
+        assetNameCache.clear()
+    }
+}
+
+

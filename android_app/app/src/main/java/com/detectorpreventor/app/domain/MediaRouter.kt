@@ -6,7 +6,9 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.RectF
+import android.media.FaceDetector
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
@@ -228,7 +230,7 @@ class MediaRouter(private val context: Context) {
             val original = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
             
-            original?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
+            original?.let { detectAndCropFace(it) }
                 ?: createSyntheticFaceBitmap("Rostro Imagen")
         } catch (e: Exception) {
             Log.e(TAG, "Error al extraer imagen desde Uri: ${e.message}")
@@ -241,13 +243,63 @@ class MediaRouter(private val context: Context) {
         return try {
             retriever.setDataSource(context, uri)
             val frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            frame?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
+            frame?.let { detectAndCropFace(it) }
                 ?: createSyntheticFaceBitmap("Rostro Video")
         } catch (e: Exception) {
             Log.e(TAG, "Error al extraer fotograma del video: ${e.message}")
             createSyntheticFaceBitmap("Rostro Video")
         } finally {
             try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+
+    private fun detectAndCropFace(source: Bitmap): Bitmap {
+        return try {
+            val w = if (source.width % 2 == 0) source.width else source.width - 1
+            val h = source.height
+            if (w < 64 || h < 64) return Bitmap.createScaledBitmap(source, 224, 224, true)
+
+            val bitmap565 = if (source.config == Bitmap.Config.RGB_565 && source.width == w) {
+                source
+            } else {
+                val copy = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+                val canvas = Canvas(copy)
+                canvas.drawBitmap(source, 0f, 0f, null)
+                copy
+            }
+
+            val maxFaces = 1
+            val faces = Array<FaceDetector.Face?>(maxFaces) { null }
+            val detector = FaceDetector(w, h, maxFaces)
+            val count = detector.findFaces(bitmap565, faces)
+
+            if (count > 0 && faces[0] != null) {
+                val face = faces[0]!!
+                val midPoint = PointF()
+                face.getMidPoint(midPoint)
+                val eyeDist = face.eyesDistance()
+                val boxWidth = (eyeDist * 2.6f).toInt()
+                val boxHeight = (eyeDist * 3.2f).toInt()
+                val left = (midPoint.x - boxWidth / 2f).toInt().coerceIn(0, source.width - 1)
+                val top = (midPoint.y - eyeDist * 1.2f).toInt().coerceIn(0, source.height - 1)
+                val actualW = boxWidth.coerceAtMost(source.width - left)
+                val actualH = boxHeight.coerceAtMost(source.height - top)
+
+                if (actualW > 32 && actualH > 32) {
+                    val cropped = Bitmap.createBitmap(source, left, top, actualW, actualH)
+                    Log.d(TAG, "Rostro detectado y recortado (BlazeFace/FaceDetector): [x=$left, y=$top, ${actualW}x${actualH}]")
+                    return Bitmap.createScaledBitmap(cropped, 224, 224, true)
+                }
+            }
+
+            val minDim = minOf(source.width, source.height)
+            val cropX = (source.width - minDim) / 2
+            val cropY = (source.height - minDim) / 2
+            val centerCropped = Bitmap.createBitmap(source, cropX, cropY, minDim, minDim)
+            Bitmap.createScaledBitmap(centerCropped, 224, 224, true)
+        } catch (e: Exception) {
+            Log.w(TAG, "Detección facial omitida, aplicando escalado directo: ${e.message}")
+            Bitmap.createScaledBitmap(source, 224, 224, true)
         }
     }
 

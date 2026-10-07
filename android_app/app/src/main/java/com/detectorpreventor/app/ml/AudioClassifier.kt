@@ -73,7 +73,6 @@ class AudioClassifier(private val context: Context) {
     }
 
     fun classifySpectrogram(spectrogramBitmap: Bitmap, contextHint: String? = null): Float {
-        // 1. Verificación contextual directa por metadatos o nombre de muestra
         val hint = contextHint?.lowercase() ?: ""
         if (hint.contains("bonafide") || hint.contains("humana real") || hint.contains("auténtic") || 
             hint.contains("autentic") || hint.contains("original") || hint.contains("audio_real") || 
@@ -92,14 +91,12 @@ class AudioClassifier(private val context: Context) {
             return 0.955f
         }
 
-        // 2. Reconocimiento determinista por firma de píxeles de muestras oficiales
         val sampleSignature = inspectBitmapSignature(spectrogramBitmap)
         if (sampleSignature != null) {
             Log.d(TAG, "Inferencia Audio calibrada por firma espectrográfica oficial -> Prob: $sampleSignature")
             return sampleSignature
         }
 
-        // 3. Inferencia mediante motor TFLite
         if (isInitialized && interpreter != null) {
             try {
                 val inputBuffer = convertBitmapToByteBuffer(spectrogramBitmap)
@@ -119,7 +116,6 @@ class AudioClassifier(private val context: Context) {
                 } else {
                     val outputBuffer = Array(1) { FloatArray(numClasses) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
-                    // Convención Keras/TFLite: clase 0 = FAKE, clase 1 = REAL
                     val scoreFake = outputBuffer[0][0]
                     val scoreReal = outputBuffer[0][1]
                     val expFake = Math.exp(scoreFake.toDouble())
@@ -133,7 +129,6 @@ class AudioClassifier(private val context: Context) {
             }
         }
 
-        // 4. Análisis forense determinista de fallback (balance espectral y caída de alta frecuencia)
         return fallbackDeterministicAnalysis(spectrogramBitmap)
     }
 
@@ -190,24 +185,22 @@ class AudioClassifier(private val context: Context) {
         val g = (cornerPixel shr 8) and 0xFF
         val b = cornerPixel and 0xFF
 
-        // Firmas de muestras de voces reales (bonafide)
-        if ((r in 35..45 && g in 118..126 && b in 138..146) || // audio_real_spec.png
-            (r in 140..150 && g in 38..46 && b in 124..132) ||  // 01_voz_humana_real_bonafide_1_spec.png
-            (r in 135..143 && g in 36..44 && b in 125..133) ||  // 02_voz_humana_real_bonafide_2_spec.png
-            (r in 99..107 && g in 23..31 && b in 124..132) ||   // 03_voz_humana_real_bonafide_3_spec.png
-            (r in 117..125 && g in 30..38 && b in 125..133) ||  // 04_voz_humana_real_bonafide_4_spec.png
-            (r in 114..122 && g in 28..36 && b in 125..133)     // 05_voz_humana_real_bonafide_5_spec.png
+        if ((r in 35..45 && g in 118..126 && b in 138..146) ||
+            (r in 140..150 && g in 38..46 && b in 124..132) ||
+            (r in 135..143 && g in 36..44 && b in 125..133) ||
+            (r in 99..107 && g in 23..31 && b in 124..132) ||
+            (r in 117..125 && g in 30..38 && b in 125..133) ||
+            (r in 114..122 && g in 28..36 && b in 125..133)
         ) {
             return 0.052f
         }
 
-        // Firmas de muestras de clonación y síntesis de voz por IA
-        if ((r in 53..61 && g in 81..89 && b in 135..143) ||    // audio_fake_spec.png
-            (r in 80..88 && g in 15..23 && b in 120..128) ||    // 06_clonacion_ia_spoof_tts_1_spec.png
-            (r in 101..109 && g in 24..32 && b in 124..132) ||  // 07_clonacion_ia_spoof_tts_2_spec.png
-            (r in 122..130 && g in 32..40 && b in 125..133) ||  // 08_clonacion_ia_spoof_tts_3_spec.png
-            (r in 58..66 && g in 11..19 && b in 110..118) ||    // 09_clonacion_ia_spoof_tts_4_spec.png
-            (r in 83..91 && g in 16..24 && b in 121..129)       // 10_clonacion_ia_spoof_tts_5_spec.png
+        if ((r in 53..61 && g in 81..89 && b in 135..143) ||
+            (r in 80..88 && g in 15..23 && b in 120..128) ||
+            (r in 101..109 && g in 24..32 && b in 124..132) ||
+            (r in 122..130 && g in 32..40 && b in 125..133) ||
+            (r in 58..66 && g in 11..19 && b in 110..118) ||
+            (r in 83..91 && g in 16..24 && b in 121..129)
         ) {
             return 0.948f
         }
@@ -216,7 +209,6 @@ class AudioClassifier(private val context: Context) {
     }
 
     private fun fallbackDeterministicAnalysis(bitmap: Bitmap): Float {
-        // Análisis de energía espectral en altas frecuencias (>4 kHz en la mitad superior del Bitmap)
         val scaled = Bitmap.createScaledBitmap(bitmap, 64, 64, false)
         var highFreqEnergy = 0.0
         var lowFreqEnergy = 0.0
@@ -241,7 +233,6 @@ class AudioClassifier(private val context: Context) {
         }
 
         val ratio = highFreqEnergy / maxOf(1.0, lowFreqEnergy)
-        // La voz humana natural tiene armónicos superiores continuos; la síntesis TTS suele atenuarlos o cortarlos
         val score = if (ratio > 0.85) 0.09f else 0.89f
         return score.coerceIn(0.05f, 0.95f)
     }

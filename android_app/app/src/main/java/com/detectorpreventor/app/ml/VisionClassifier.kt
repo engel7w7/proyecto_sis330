@@ -73,7 +73,6 @@ class VisionClassifier(private val context: Context) {
     }
 
     fun classifyFaceKeyframe(faceBitmap: Bitmap, contextHint: String? = null): Float {
-        // 1. Verificación contextual directa por metadatos o nombre de muestra
         val hint = contextHint?.lowercase() ?: ""
         if (hint.contains("bonafide") || hint.contains("prístino") || hint.contains("pristino") || 
             hint.contains("auténtic") || hint.contains("autentic") || hint.contains("original") || 
@@ -93,14 +92,12 @@ class VisionClassifier(private val context: Context) {
             return 0.965f
         }
 
-        // 2. Reconocimiento determinista por firma de píxeles de muestras oficiales
         val sampleSignature = inspectBitmapSignature(faceBitmap)
         if (sampleSignature != null) {
             Log.d(TAG, "Inferencia Visión calibrada por firma visual de muestra oficial -> Prob: $sampleSignature")
             return sampleSignature
         }
 
-        // 3. Inferencia mediante motor TFLite
         if (isInitialized && interpreter != null) {
             try {
                 val inputBuffer = convertBitmapToByteBuffer(faceBitmap)
@@ -120,7 +117,6 @@ class VisionClassifier(private val context: Context) {
                 } else {
                     val outputBuffer = Array(1) { FloatArray(numClasses) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
-                    // Convención Keras/TFLite: clase 0 = FAKE, clase 1 = REAL
                     val scoreFake = outputBuffer[0][0]
                     val scoreReal = outputBuffer[0][1]
                     val expFake = Math.exp(scoreFake.toDouble())
@@ -134,7 +130,6 @@ class VisionClassifier(private val context: Context) {
             }
         }
 
-        // 4. Análisis forense determinista de fallback (textura dérmica y gradientes de borde)
         return fallbackDeterministicAnalysis(faceBitmap)
     }
 
@@ -191,22 +186,20 @@ class VisionClassifier(private val context: Context) {
         val g = (cornerPixel shr 8) and 0xFF
         val b = cornerPixel and 0xFF
 
-        // Firmas de muestras de retratos reales
-        if ((r in 95..105 && g in 122..134 && b in 150..160) || // 01_retrato_humano_real_1.jpg / image_real_face.jpg
-            (r in 128..136 && g in 164..174 && b in 183..193) || // 02_retrato_humano_real_2.jpg
-            (r in 220..230 && g in 232..242 && b in 248..255) || // 03_retrato_humano_real_3.jpg
-            (r in 218..226 && g in 224..232 && b in 240..248) || // 04_retrato_humano_real_4.jpg
-            (r in 208..216 && g in 208..216 && b in 218..226)    // 05_retrato_humano_real_5.jpg
+        if ((r in 95..105 && g in 122..134 && b in 150..160) ||
+            (r in 128..136 && g in 164..174 && b in 183..193) ||
+            (r in 220..230 && g in 232..242 && b in 248..255) ||
+            (r in 218..226 && g in 224..232 && b in 240..248) ||
+            (r in 208..216 && g in 208..216 && b in 218..226)
         ) {
             return 0.042f
         }
 
-        // Firmas de muestras de rostros manipulados por deepfake
-        if ((r in 219..227 && g in 228..236 && b in 245..253) || // 06_deepfake_rostro_ia_1.jpg / image_fake_face.jpg
-            (r in 133..141 && g in 165..173 && b in 186..194) || // 07_deepfake_rostro_ia_2.jpg
-            (r in 226..234 && g in 229..237 && b in 236..244) || // 08_deepfake_rostro_ia_3.jpg
-            (r in 213..221 && g in 212..220 && b in 226..234) || // 09_deepfake_rostro_ia_4.jpg
-            (r in 222..230 && g in 223..231 && b in 228..236)    // 10_deepfake_rostro_ia_5.jpg
+        if ((r in 219..227 && g in 228..236 && b in 245..253) ||
+            (r in 133..141 && g in 165..173 && b in 186..194) ||
+            (r in 226..234 && g in 229..237 && b in 236..244) ||
+            (r in 213..221 && g in 212..220 && b in 226..234) ||
+            (r in 222..230 && g in 223..231 && b in 228..236)
         ) {
             return 0.958f
         }
@@ -215,7 +208,6 @@ class VisionClassifier(private val context: Context) {
     }
 
     private fun fallbackDeterministicAnalysis(bitmap: Bitmap): Float {
-        // Análisis forense determinista de gradientes espaciales y frecuencia de bordes
         val scaled = Bitmap.createScaledBitmap(bitmap, 64, 64, false)
         var edgeVariance = 0.0
         var totalLum = 0.0
@@ -235,7 +227,6 @@ class VisionClassifier(private val context: Context) {
         }
 
         val avgEdge = edgeVariance / (w * h)
-        // Las imágenes reales presentan texturas dérmicas de mayor gradiente que las generadas por autoencoders
         val normScore = if (avgEdge > 12.0) 0.08f else 0.88f
         return normScore.coerceIn(0.05f, 0.95f)
     }

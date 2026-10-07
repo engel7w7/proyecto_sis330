@@ -337,6 +337,7 @@ class MainActivity : ComponentActivity() {
             )
 
             NotificationMediaCache.storeMedia(
+                context = this@MainActivity,
                 notifId = notif.id,
                 faceBitmap = faceBitmapToStore,
                 audioBitmap = audioBitmapToStore

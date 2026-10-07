@@ -111,6 +111,18 @@ class NotificationMonitorService : NotificationListenerService() {
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
+        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            Log.d(TAG, "Notificacion ignorada por FLAG_GROUP_SUMMARY ($pkgName)")
+            return
+        }
+
+        val template = extras.getString(Notification.EXTRA_TEMPLATE) ?: ""
+        val compatTemplate = extras.getString("androidx.core.app.extra.COMPAT_TEMPLATE") ?: ""
+        if (template.contains("InboxStyle", ignoreCase = true) || compatTemplate.contains("InboxStyle", ignoreCase = true)) {
+            Log.d(TAG, "Notificacion ignorada por ser plantilla InboxStyle multi-chat ($pkgName)")
+            return
+        }
+
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
         val conversationTitle = extras.getCharSequence("android.conversationTitle")?.toString()?.trim()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
@@ -120,6 +132,12 @@ class NotificationMonitorService : NotificationListenerService() {
         val textLines = (extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES) ?: emptyArray())
             .mapNotNull { it?.toString()?.trim() }
             .filter { it.isNotBlank() }
+
+        if (isWhatsApp && (rawTitle.isNullOrBlank() || rawTitle == "WhatsApp") &&
+            (text.contains("mensajes de", ignoreCase = true) || text.contains("messages from", ignoreCase = true))) {
+            Log.d(TAG, "Notificacion ignorada por ser resumen agregado multi-chat de WhatsApp ($text)")
+            return
+        }
 
         val styleMessages = mutableListOf<String>()
         var messageSender: String? = null
@@ -258,10 +276,16 @@ class NotificationMonitorService : NotificationListenerService() {
         when {
             isImageRelated -> {
                 mediaType = MediaType.IMAGE_ONLY
-                val pictureBitmap = extractPictureFromNotification(extras)
+                val realPicture = extractPictureFromNotification(notification, extras, isWhatsApp)
+                val pictureBitmap = realPicture
                     ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/01_retrato_humano_real_1.jpg")
                 cachedFace = pictureBitmap
-                visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
+                visionProb = if (realPicture != null) {
+                    Log.i(TAG, "Ejecutando inferencia TFLite real sobre imagen capturada de la notificacion...")
+                    vClassifier.classifyFaceKeyframe(realPicture, null)
+                } else {
+                    pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
+                }
                 audioProb = null
                 displayText = if (containsFraudKeyword) {
                     "Fotografía sospechosa (Alerta: Posible FaceSwap)"
@@ -283,12 +307,18 @@ class NotificationMonitorService : NotificationListenerService() {
             }
             isVideoRelated -> {
                 mediaType = MediaType.VIDEO_MULTIMODAL
-                val faceBitmap = extractPictureFromNotification(extras)
+                val realVideoFrame = extractPictureFromNotification(notification, extras, isWhatsApp)
+                val faceBitmap = realVideoFrame
                     ?: loadAssetBitmap(if (suspiciousContext) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg")
                 val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png")
                 cachedFace = faceBitmap
                 cachedAudio = specBitmap
-                visionProb = faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "deepfake" else "video real") }
+                visionProb = if (realVideoFrame != null) {
+                    Log.i(TAG, "Ejecutando inferencia TFLite real sobre keyframe de video capturado...")
+                    vClassifier.classifyFaceKeyframe(realVideoFrame, null)
+                } else {
+                    faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "deepfake" else "video real") }
+                }
                 audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "clonacion" else "video real") }
                 displayText = if (containsFraudKeyword) {
                     "Video sospechoso con posible alteración audiovisual"
@@ -314,26 +344,160 @@ class NotificationMonitorService : NotificationListenerService() {
             fusionResult = fusionResult
         )
 
-        NotificationMediaCache.storeMedia(item.id, faceBitmap = cachedFace, audioBitmap = cachedAudio)
+        NotificationMediaCache.storeMedia(
+            context = applicationContext,
+            notifId = item.id,
+            faceBitmap = cachedFace,
+            audioBitmap = cachedAudio
+        )
 
         NotificationRepository.addNotification(item)
         Log.i(TAG, "Notificacion procesada por TFLite: [$appName] $sender: $displayText (Riesgo evaluado: ${fusionResult.globalRiskPercentage}%)")
     }
 
-    private fun extractPictureFromNotification(extras: android.os.Bundle): Bitmap? {
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                extras.getParcelable(Notification.EXTRA_PICTURE, Bitmap::class.java)
-                    ?: extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG, Bitmap::class.java)
-                    ?: extras.getParcelable(Notification.EXTRA_LARGE_ICON, Bitmap::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                (extras.getParcelable(Notification.EXTRA_PICTURE) as? Bitmap)
-                    ?: (extras.getParcelable(Notification.EXTRA_LARGE_ICON_BIG) as? Bitmap)
-                    ?: (extras.getParcelable(Notification.EXTRA_LARGE_ICON) as? Bitmap)
+    private fun extractPictureFromNotification(
+        notification: Notification,
+        extras: android.os.Bundle,
+        isWhatsApp: Boolean
+    ): Bitmap? {
+        try {
+            // 1. EXTRA_PICTURE (Bitmap o Icon)
+            val pictureObj = extras.get(Notification.EXTRA_PICTURE)
+            when (pictureObj) {
+                is Bitmap -> {
+                    Log.i(TAG, "Imagen extraida directamente de EXTRA_PICTURE (Bitmap ${pictureObj.width}x${pictureObj.height})")
+                    return pictureObj
+                }
+                is android.graphics.drawable.Icon -> {
+                    iconToBitmap(pictureObj)?.let {
+                        Log.i(TAG, "Imagen extraida de EXTRA_PICTURE (Icon -> Bitmap ${it.width}x${it.height})")
+                        return it
+                    }
+                }
+            }
+
+            // 2. EXTRA_PICTURE_ICON o android.pictureIcon
+            val pictureIconObj = extras.get("android.pictureIcon")
+            if (pictureIconObj is android.graphics.drawable.Icon) {
+                iconToBitmap(pictureIconObj)?.let {
+                    Log.i(TAG, "Imagen extraida de EXTRA_PICTURE_ICON (Icon -> Bitmap ${it.width}x${it.height})")
+                    return it
+                }
+            } else if (pictureIconObj is Bitmap) {
+                Log.i(TAG, "Imagen extraida de EXTRA_PICTURE_ICON (Bitmap ${pictureIconObj.width}x${pictureIconObj.height})")
+                return pictureIconObj
+            }
+
+            // 3. EXTRA_LARGE_ICON_BIG o android.largeIcon.big
+            val bigLargeObj = extras.get("android.largeIcon.big") ?: extras.get(Notification.EXTRA_LARGE_ICON_BIG)
+            when (bigLargeObj) {
+                is Bitmap -> return bigLargeObj
+                is android.graphics.drawable.Icon -> {
+                    iconToBitmap(bigLargeObj)?.let { return it }
+                }
+            }
+
+            // 4. MessagingStyle (android.messages) buscando URIs de imagen adjunta
+            val messagesBundleArray = extras.getParcelableArray("android.messages")
+                ?: extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+            if (messagesBundleArray != null) {
+                for (i in messagesBundleArray.indices.reversed()) {
+                    val p = messagesBundleArray[i]
+                    if (p is android.os.Bundle) {
+                        val uriObj = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            p.getParcelable("uri", android.net.Uri::class.java)
+                                ?: p.getParcelable("data_uri", android.net.Uri::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            (p.getParcelable("uri") as? android.net.Uri)
+                                ?: (p.getParcelable("data_uri") as? android.net.Uri)
+                        } ?: (p.getString("uri") ?: p.getString("data_uri"))?.let {
+                            try { android.net.Uri.parse(it) } catch (e: Exception) { null }
+                        }
+
+                        if (uriObj != null) {
+                            loadBitmapFromUri(uriObj)?.let {
+                                Log.i(TAG, "Imagen extraida desde URI MessagingStyle: $uriObj (${it.width}x${it.height})")
+                                return it
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. EXTRA_LARGE_ICON o android.largeIcon
+            val largeIconObj = extras.get(Notification.EXTRA_LARGE_ICON)
+            when (largeIconObj) {
+                is Bitmap -> {
+                    Log.i(TAG, "Imagen extraida de EXTRA_LARGE_ICON (Bitmap ${largeIconObj.width}x${largeIconObj.height})")
+                    return largeIconObj
+                }
+                is android.graphics.drawable.Icon -> {
+                    iconToBitmap(largeIconObj)?.let {
+                        Log.i(TAG, "Imagen extraida de EXTRA_LARGE_ICON (Icon -> Bitmap ${it.width}x${it.height})")
+                        return it
+                    }
+                }
+            }
+
+            // 6. notification.getLargeIcon()
+            notification.getLargeIcon()?.let { icon ->
+                iconToBitmap(icon)?.let {
+                    Log.i(TAG, "Imagen extraida de notification.getLargeIcon() (${it.width}x${it.height})")
+                    return it
+                }
+            }
+
+            // 7. Respaldo: Archivo reciente en WhatsApp Images (si se guardo localmente en el dispositivo)
+            if (isWhatsApp) {
+                try {
+                    val waDir = java.io.File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/")
+                    if (waDir.exists() && waDir.canRead()) {
+                        val recentFile = waDir.listFiles { f -> f.isFile && f.name.endsWith(".jpg", ignoreCase = true) }
+                            ?.maxByOrNull { f -> f.lastModified() }
+                        if (recentFile != null && (System.currentTimeMillis() - recentFile.lastModified()) < 60000L) {
+                            val bmp = BitmapFactory.decodeFile(recentFile.absolutePath)
+                            if (bmp != null) {
+                                Log.i(TAG, "Imagen recuperada directamente de WhatsApp Images: ${recentFile.name} (${bmp.width}x${bmp.height})")
+                                return bmp
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "No se pudo extraer bitmap de la notificacion: ${e.message}")
+            Log.w(TAG, "Error durante extraccion de imagen: ${e.message}")
+        }
+        return null
+    }
+
+    private fun iconToBitmap(icon: android.graphics.drawable.Icon): Bitmap? {
+        return try {
+            val drawable = icon.loadDrawable(applicationContext) ?: return null
+            if (drawable is android.graphics.drawable.BitmapDrawable && drawable.bitmap != null) {
+                return drawable.bitmap
+            }
+            val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 256
+            val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 256
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            bitmap
+        } catch (e: Exception) {
+            Log.w(TAG, "Error convirtiendo Icon a Bitmap: ${e.message}")
+            null
+        }
+    }
+
+    private fun loadBitmapFromUri(uri: android.net.Uri): Bitmap? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo decodificar stream desde URI ($uri): ${e.message}")
             null
         }
     }

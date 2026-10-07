@@ -109,8 +109,8 @@ class MediaRouter(private val context: Context) {
             val isThreat = notif?.isThreat ?: false
             val mType = notif?.mediaType ?: resolveMediaType(uri, mimeType)
 
-            val cachedFace = NotificationMediaCache.getFaceBitmap(notifId)
-            val cachedAudio = NotificationMediaCache.getAudioBitmap(notifId)
+            val cachedFace = NotificationMediaCache.getFaceBitmap(context, notifId) ?: NotificationMediaCache.getFaceBitmap(notifId)
+            val cachedAudio = NotificationMediaCache.getAudioBitmap(context, notifId) ?: NotificationMediaCache.getAudioBitmap(notifId)
 
             val defaultRealFace = "samples/01_retrato_humano_real_1.jpg"
             val defaultFakeFace = "samples/06_deepfake_rostro_ia_1.jpg"

@@ -235,7 +235,7 @@ class MediaRouter(private val context: Context) {
         }
     }
 
-    private fun generateSpectrogramFromAudio(uri: Uri): Bitmap {
+    fun generateSpectrogramFromAudio(uri: Uri): Bitmap {
         Log.d(TAG, "Generando espectrograma desde audio: $uri")
         return try {
             context.contentResolver.openInputStream(uri)?.use { stream ->

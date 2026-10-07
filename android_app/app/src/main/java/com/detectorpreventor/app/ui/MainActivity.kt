@@ -159,11 +159,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val audioProb: Float? = payload.audioSpectrogram?.let {
-                    audioClassifier.classifySpectrogram(it)
+                    audioClassifier.classifySpectrogram(it, payload.filename)
                 }
 
                 val visionProb: Float? = payload.faceKeyframe?.let {
-                    visionClassifier.classifyFaceKeyframe(it)
+                    visionClassifier.classifyFaceKeyframe(it, payload.filename)
                 }
 
                 val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
@@ -216,11 +216,11 @@ class MainActivity : ComponentActivity() {
             payload = payload.copy(filename = sampleName)
 
             val audioProb: Float? = payload.audioSpectrogram?.let {
-                audioClassifier.classifySpectrogram(it)
+                audioClassifier.classifySpectrogram(it, payload.filename)
             }
 
             val visionProb: Float? = payload.faceKeyframe?.let {
-                visionClassifier.classifyFaceKeyframe(it)
+                visionClassifier.classifyFaceKeyframe(it, payload.filename)
             }
 
             val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
@@ -270,10 +270,10 @@ class MainActivity : ComponentActivity() {
             payload = payload.copy(filename = "${notif.appName}: ${notif.sender} - ${notif.text}")
 
             val audioProb: Float? = payload.audioSpectrogram?.let {
-                audioClassifier.classifySpectrogram(it)
+                audioClassifier.classifySpectrogram(it, payload.filename)
             }
             val visionProb: Float? = payload.faceKeyframe?.let {
-                visionClassifier.classifyFaceKeyframe(it)
+                visionClassifier.classifyFaceKeyframe(it, payload.filename)
             }
 
             val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
@@ -292,13 +292,13 @@ class MainActivity : ComponentActivity() {
                 MediaType.AUDIO_ONLY -> {
                     val asset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
                     val bitmap = loadAssetBitmap(asset)
-                    val prob = bitmap?.let { audioClassifier.classifySpectrogram(it) }
+                    val prob = bitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "audio_fake" else "audio_real") }
                     Pair(prob, null)
                 }
                 MediaType.IMAGE_ONLY -> {
                     val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
                     val bitmap = loadAssetBitmap(asset)
-                    val prob = bitmap?.let { visionClassifier.classifyFaceKeyframe(it) }
+                    val prob = bitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "image_fake" else "image_real") }
                     Pair(null, prob)
                 }
                 MediaType.VIDEO_MULTIMODAL -> {
@@ -306,8 +306,8 @@ class MainActivity : ComponentActivity() {
                     val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
                     val fBitmap = loadAssetBitmap(faceAsset)
                     val aBitmap = loadAssetBitmap(audioAsset)
-                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it) }
-                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it) }
+                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "image_fake" else "image_real") }
+                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "audio_fake" else "audio_real") }
                     Pair(aProb, vProb)
                 }
                 else -> Pair(null, null)

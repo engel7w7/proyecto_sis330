@@ -86,7 +86,7 @@ class MediaRouter(private val context: Context) {
                     val audioAsset = when (index) {
                         1 -> "samples/01_voz_humana_real_bonafide_1_spec.png"
                         2 -> "samples/06_clonacion_ia_spoof_tts_1_spec.png"
-                        3 -> "samples/03_voz_humana_real_bonafide_3_spec.png"
+                        3 -> "samples/07_clonacion_ia_spoof_tts_2_spec.png"
                         4 -> "samples/08_clonacion_ia_spoof_tts_3_spec.png"
                         else -> "samples/04_voz_humana_real_bonafide_4_spec.png"
                     }

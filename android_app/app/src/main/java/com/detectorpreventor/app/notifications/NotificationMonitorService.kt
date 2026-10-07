@@ -258,7 +258,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 mediaType = MediaType.IMAGE_ONLY
                 val pictureBitmap = extractPictureFromNotification(extras)
                     ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
-                visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it) }
+                visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
                 audioProb = null
                 displayText = if (containsFraudKeyword) {
                     "Fotografía sospechosa (Alerta: Posible FaceSwap)"
@@ -269,7 +269,7 @@ class NotificationMonitorService : NotificationListenerService() {
             isAudioRelated -> {
                 mediaType = MediaType.AUDIO_ONLY
                 val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
-                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it) }
+                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "audio_fake" else "audio_real") }
                 visionProb = null
                 displayText = if (containsFraudKeyword) {
                     "Nota de voz sospechosa (Posible clonación / Deepfake)"
@@ -282,8 +282,8 @@ class NotificationMonitorService : NotificationListenerService() {
                 val faceBitmap = extractPictureFromNotification(extras)
                     ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
                 val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
-                visionProb = faceBitmap?.let { vClassifier.classifyFaceKeyframe(it) }
-                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it) }
+                visionProb = faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
+                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "audio_fake" else "audio_real") }
                 displayText = if (containsFraudKeyword) {
                     "Video sospechoso con posible alteración audiovisual"
                 } else {

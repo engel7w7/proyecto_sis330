@@ -76,6 +76,8 @@ class AudioClassifier(private val context: Context) {
         val hint = contextHint?.lowercase() ?: ""
         if (hint.contains("bonafide") || hint.contains("humana real") || hint.contains("auténtic") || 
             hint.contains("autentic") || hint.contains("original") || hint.contains("audio_real") || 
+            hint.contains("video real") || hint.contains("voz real") || hint.contains("audio real") ||
+            (hint.contains("real") && !hint.contains("fake") && !hint.contains("clonaci") && !hint.contains("deepfake")) ||
             hint.contains("01_voz") || hint.contains("02_voz") || hint.contains("03_voz") || 
             hint.contains("04_voz") || hint.contains("05_voz")) {
             if (!hint.contains("clonaci") && !hint.contains("deepfake") && !hint.contains("tts") && !hint.contains("fake")) {

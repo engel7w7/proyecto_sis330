@@ -293,9 +293,53 @@ fun ScannerView(
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        var multimodalTab by remember(payload) { mutableStateOf(0) }
 
-        val previewBitmap = payload?.faceKeyframe ?: payload?.audioSpectrogram
+        if (payload?.mediaType == MediaType.VIDEO_MULTIMODAL && payload.faceKeyframe != null && payload.audioSpectrogram != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { multimodalTab = 0 },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (multimodalTab == 0) PrimaryIndigo else SurfaceDark
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.weight(1f).height(34.dp)
+                ) {
+                    Text(
+                        "Fotograma Video (Visión)",
+                        fontSize = 11.sp,
+                        color = if (multimodalTab == 0) Color.White else TextSecondary
+                    )
+                }
+                Button(
+                    onClick = { multimodalTab = 1 },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (multimodalTab == 1) PrimaryIndigo else SurfaceDark
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.weight(1f).height(34.dp)
+                ) {
+                    Text(
+                        "Espectrograma Audio (Voz)",
+                        fontSize = 11.sp,
+                        color = if (multimodalTab == 1) Color.White else TextSecondary
+                    )
+                }
+            }
+        }
+
+        val previewBitmap = if (payload?.mediaType == MediaType.VIDEO_MULTIMODAL && payload.faceKeyframe != null && payload.audioSpectrogram != null) {
+            if (multimodalTab == 0) payload.faceKeyframe else payload.audioSpectrogram
+        } else {
+            payload?.faceKeyframe ?: payload?.audioSpectrogram
+        }
         val riskFactor = (fusionResult?.globalRiskPercentage ?: 50f) / 100f
 
         HeatmapOverlay(
@@ -1253,6 +1297,27 @@ fun NotificationsView(
                     Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Simular Fotografía Facial Auténtica (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
+                            MediaType.VIDEO_MULTIMODAL,
+                            false,
+                            "Primo",
+                            "Video familiar del cumpleaños (video_autentico.mp4)"
+                        )
+                        Toast.makeText(context, "Video auténtico autenticado por modelos de visión y audio TFLite", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF047857)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Video Multimodal Auténtico (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
                 }
             }
         }

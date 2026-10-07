@@ -25,6 +25,7 @@ import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
 import com.detectorpreventor.app.notifications.InterceptedNotification
+import com.detectorpreventor.app.notifications.NotificationMediaCache
 import com.detectorpreventor.app.notifications.NotificationMonitorService
 import com.detectorpreventor.app.notifications.NotificationRepository
 import com.detectorpreventor.app.ui.theme.BackgroundDark
@@ -269,14 +270,15 @@ class MainActivity : ComponentActivity() {
             var payload = mediaRouter.processIncomingUri(sampleUri, mime)
             payload = payload.copy(filename = "${notif.appName}: ${notif.sender} - ${notif.text}")
 
-            val audioProb: Float? = payload.audioSpectrogram?.let {
-                audioClassifier.classifySpectrogram(it, payload.filename)
+            val fusionResult = notif.fusionResult ?: run {
+                val audioProb: Float? = payload.audioSpectrogram?.let {
+                    audioClassifier.classifySpectrogram(it, payload.filename)
+                }
+                val visionProb: Float? = payload.faceKeyframe?.let {
+                    visionClassifier.classifyFaceKeyframe(it, payload.filename)
+                }
+                RiskScorer.calculateGlobalRisk(audioProb, visionProb)
             }
-            val visionProb: Float? = payload.faceKeyframe?.let {
-                visionClassifier.classifyFaceKeyframe(it, payload.filename)
-            }
-
-            val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
 
             lifecycleScope.launch(Dispatchers.Main) {
                 currentPayload = payload
@@ -288,26 +290,33 @@ class MainActivity : ComponentActivity() {
 
     private fun simulateIncomingNotification(mediaType: MediaType, isThreat: Boolean, sender: String, text: String) {
         lifecycleScope.launch(Dispatchers.Default) {
+            var faceBitmapToStore: Bitmap? = null
+            var audioBitmapToStore: Bitmap? = null
+
             val (audioProb, visionProb) = when (mediaType) {
                 MediaType.AUDIO_ONLY -> {
                     val asset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
                     val bitmap = loadAssetBitmap(asset)
+                    audioBitmapToStore = bitmap
                     val prob = bitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "audio_fake" else "audio_real") }
                     Pair(prob, null)
                 }
                 MediaType.IMAGE_ONLY -> {
-                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                    val bitmap = loadAssetBitmap(asset)
+                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/01_retrato_humano_real_1.jpg"
+                    val bitmap = loadAssetBitmap(asset) ?: loadAssetBitmap(if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                    faceBitmapToStore = bitmap
                     val prob = bitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "image_fake" else "image_real") }
                     Pair(null, prob)
                 }
                 MediaType.VIDEO_MULTIMODAL -> {
-                    val faceAsset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
-                    val fBitmap = loadAssetBitmap(faceAsset)
-                    val aBitmap = loadAssetBitmap(audioAsset)
-                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "image_fake" else "image_real") }
-                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "audio_fake" else "audio_real") }
+                    val faceAsset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
+                    val audioAsset = if (isThreat) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png"
+                    val fBitmap = loadAssetBitmap(faceAsset) ?: loadAssetBitmap(if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                    val aBitmap = loadAssetBitmap(audioAsset) ?: loadAssetBitmap(if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                    faceBitmapToStore = fBitmap
+                    audioBitmapToStore = aBitmap
+                    val vProb = fBitmap?.let { visionClassifier.classifyFaceKeyframe(it, if (isThreat) "deepfake" else "video real") }
+                    val aProb = aBitmap?.let { audioClassifier.classifySpectrogram(it, if (isThreat) "clonacion" else "video real") }
                     Pair(aProb, vProb)
                 }
                 else -> Pair(null, null)
@@ -326,6 +335,13 @@ class MainActivity : ComponentActivity() {
                 isThreat = fusion.globalRiskPercentage >= 70f,
                 fusionResult = fusion
             )
+
+            NotificationMediaCache.storeMedia(
+                notifId = notif.id,
+                faceBitmap = faceBitmapToStore,
+                audioBitmap = audioBitmapToStore
+            )
+
             NotificationRepository.addNotification(notif)
             Log.i(TAG, "Notificacion simulada evaluada por TFLite: [WhatsApp] $sender - Riesgo: ${fusion.globalRiskPercentage}%")
         }

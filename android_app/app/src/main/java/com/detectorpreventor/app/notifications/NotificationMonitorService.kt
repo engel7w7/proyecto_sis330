@@ -252,12 +252,15 @@ class NotificationMonitorService : NotificationListenerService() {
         val audioProb: Float?
         val visionProb: Float?
         val displayText: String
+        var cachedFace: Bitmap? = null
+        var cachedAudio: Bitmap? = null
 
         when {
             isImageRelated -> {
                 mediaType = MediaType.IMAGE_ONLY
                 val pictureBitmap = extractPictureFromNotification(extras)
-                    ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                    ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/01_retrato_humano_real_1.jpg")
+                cachedFace = pictureBitmap
                 visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
                 audioProb = null
                 displayText = if (containsFraudKeyword) {
@@ -268,7 +271,8 @@ class NotificationMonitorService : NotificationListenerService() {
             }
             isAudioRelated -> {
                 mediaType = MediaType.AUDIO_ONLY
-                val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png")
+                cachedAudio = specBitmap
                 audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "audio_fake" else "audio_real") }
                 visionProb = null
                 displayText = if (containsFraudKeyword) {
@@ -280,10 +284,12 @@ class NotificationMonitorService : NotificationListenerService() {
             isVideoRelated -> {
                 mediaType = MediaType.VIDEO_MULTIMODAL
                 val faceBitmap = extractPictureFromNotification(extras)
-                    ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
-                val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
-                visionProb = faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
-                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "audio_fake" else "audio_real") }
+                    ?: loadAssetBitmap(if (suspiciousContext) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg")
+                val specBitmap = loadAssetBitmap(if (suspiciousContext) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png")
+                cachedFace = faceBitmap
+                cachedAudio = specBitmap
+                visionProb = faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "deepfake" else "video real") }
+                audioProb = specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "clonacion" else "video real") }
                 displayText = if (containsFraudKeyword) {
                     "Video sospechoso con posible alteración audiovisual"
                 } else {
@@ -307,6 +313,8 @@ class NotificationMonitorService : NotificationListenerService() {
             isThreat = fusionResult.globalRiskPercentage >= 70f,
             fusionResult = fusionResult
         )
+
+        NotificationMediaCache.storeMedia(item.id, faceBitmap = cachedFace, audioBitmap = cachedAudio)
 
         NotificationRepository.addNotification(item)
         Log.i(TAG, "Notificacion procesada por TFLite: [$appName] $sender: $displayText (Riesgo evaluado: ${fusionResult.globalRiskPercentage}%)")

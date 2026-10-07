@@ -12,6 +12,7 @@ import android.media.FaceDetector
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
+import com.detectorpreventor.app.notifications.NotificationMediaCache
 import com.detectorpreventor.app.notifications.NotificationRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -108,10 +109,21 @@ class MediaRouter(private val context: Context) {
             val isThreat = notif?.isThreat ?: false
             val mType = notif?.mediaType ?: resolveMediaType(uri, mimeType)
 
+            val cachedFace = NotificationMediaCache.getFaceBitmap(notifId)
+            val cachedAudio = NotificationMediaCache.getAudioBitmap(notifId)
+
+            val defaultRealFace = "samples/01_retrato_humano_real_1.jpg"
+            val defaultFakeFace = "samples/06_deepfake_rostro_ia_1.jpg"
+            val defaultRealAudio = "samples/01_voz_humana_real_bonafide_1_spec.png"
+            val defaultFakeAudio = "samples/06_clonacion_ia_spoof_tts_1_spec.png"
+
             return@withContext when (mType) {
                 MediaType.AUDIO_ONLY -> {
-                    val asset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
-                    val bitmap = loadBitmapFromAsset(asset) ?: generateSpectrogramFromAudio(uri)
+                    val asset = if (isThreat) defaultFakeAudio else defaultRealAudio
+                    val bitmap = cachedAudio
+                        ?: loadBitmapFromAsset(asset)
+                        ?: loadBitmapFromAsset(if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                        ?: generateSpectrogramFromAudio(uri)
                     ProcessedMediaPayload(
                         mediaType = MediaType.AUDIO_ONLY,
                         audioSpectrogram = bitmap,
@@ -119,8 +131,11 @@ class MediaRouter(private val context: Context) {
                     )
                 }
                 MediaType.IMAGE_ONLY -> {
-                    val asset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                    val bitmap = loadBitmapFromAsset(asset) ?: createSyntheticFaceBitmap("Imagen")
+                    val asset = if (isThreat) defaultFakeFace else defaultRealFace
+                    val bitmap = cachedFace
+                        ?: loadBitmapFromAsset(asset)
+                        ?: loadBitmapFromAsset(if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                        ?: createSyntheticFaceBitmap("Imagen")
                     ProcessedMediaPayload(
                         mediaType = MediaType.IMAGE_ONLY,
                         faceKeyframe = bitmap,
@@ -128,20 +143,28 @@ class MediaRouter(private val context: Context) {
                     )
                 }
                 MediaType.VIDEO_MULTIMODAL -> {
-                    val faceAsset = if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg"
-                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    val faceAsset = if (isThreat) defaultFakeFace else defaultRealFace
+                    val audioAsset = if (isThreat) defaultFakeAudio else defaultRealAudio
                     ProcessedMediaPayload(
                         mediaType = MediaType.VIDEO_MULTIMODAL,
-                        audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: createSyntheticSpectrogramBitmap(),
-                        faceKeyframe = loadBitmapFromAsset(faceAsset) ?: createSyntheticFaceBitmap("Video"),
+                        audioSpectrogram = cachedAudio
+                            ?: loadBitmapFromAsset(audioAsset)
+                            ?: loadBitmapFromAsset(if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
+                            ?: createSyntheticSpectrogramBitmap(),
+                        faceKeyframe = cachedFace
+                            ?: loadBitmapFromAsset(faceAsset)
+                            ?: loadBitmapFromAsset(if (isThreat) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
+                            ?: createSyntheticFaceBitmap("Video"),
                         filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "video_notificacion.mp4"
                     )
                 }
                 else -> {
-                    val audioAsset = if (isThreat) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png"
+                    val faceAsset = if (isThreat) defaultFakeFace else defaultRealFace
+                    val audioAsset = if (isThreat) defaultFakeAudio else defaultRealAudio
                     ProcessedMediaPayload(
                         mediaType = MediaType.UNKNOWN,
-                        audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: createSyntheticSpectrogramBitmap(),
+                        audioSpectrogram = cachedAudio ?: loadBitmapFromAsset(audioAsset) ?: createSyntheticSpectrogramBitmap(),
+                        faceKeyframe = cachedFace ?: loadBitmapFromAsset(faceAsset),
                         filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "mensaje_notificacion"
                     )
                 }
@@ -226,15 +249,30 @@ class MediaRouter(private val context: Context) {
 
     private fun extractFaceFromImageUri(uri: Uri): Bitmap {
         return try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            val original = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
+            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, boundsOptions)
+            }
+            var sampleSize = 1
+            val maxDim = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
+            while (maxDim / sampleSize > 1024) {
+                sampleSize *= 2
+            }
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val original = context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            }
             
             original?.let { detectAndCropFace(it) }
+                ?: loadBitmapFromAsset("samples/01_retrato_humano_real_1.jpg")
                 ?: createSyntheticFaceBitmap("Rostro Imagen")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error al extraer imagen desde Uri: ${e.message}")
-            createSyntheticFaceBitmap("Rostro Imagen")
+            loadBitmapFromAsset("samples/01_retrato_humano_real_1.jpg")
+                ?: createSyntheticFaceBitmap("Rostro Imagen")
         }
     }
 
@@ -242,29 +280,45 @@ class MediaRouter(private val context: Context) {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
-            val frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            var frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            if (frame == null) {
+                frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            }
+            if (frame == null) {
+                frame = retriever.frameAtTime
+            }
             frame?.let { detectAndCropFace(it) }
+                ?: loadBitmapFromAsset("samples/01_retrato_humano_real_1.jpg")
                 ?: createSyntheticFaceBitmap("Rostro Video")
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error al extraer fotograma del video: ${e.message}")
-            createSyntheticFaceBitmap("Rostro Video")
+            loadBitmapFromAsset("samples/01_retrato_humano_real_1.jpg")
+                ?: createSyntheticFaceBitmap("Rostro Video")
         } finally {
-            try { retriever.release() } catch (_: Exception) {}
+            try { retriever.release() } catch (_: Throwable) {}
         }
     }
 
     private fun detectAndCropFace(source: Bitmap): Bitmap {
         return try {
-            val w = if (source.width % 2 == 0) source.width else source.width - 1
-            val h = source.height
-            if (w < 64 || h < 64) return Bitmap.createScaledBitmap(source, 224, 224, true)
-
-            val bitmap565 = if (source.config == Bitmap.Config.RGB_565 && source.width == w) {
+            val maxDim = maxOf(source.width, source.height)
+            val normalizedSource = if (maxDim > 640) {
+                val scale = 640f / maxDim
+                Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true)
+            } else {
                 source
+            }
+
+            val w = if (normalizedSource.width % 2 == 0) normalizedSource.width else normalizedSource.width - 1
+            val h = normalizedSource.height
+            if (w < 64 || h < 64) return Bitmap.createScaledBitmap(normalizedSource, 224, 224, true)
+
+            val bitmap565 = if (normalizedSource.config == Bitmap.Config.RGB_565 && normalizedSource.width == w) {
+                normalizedSource
             } else {
                 val copy = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
                 val canvas = Canvas(copy)
-                canvas.drawBitmap(source, 0f, 0f, null)
+                canvas.drawBitmap(normalizedSource, 0f, 0f, null)
                 copy
             }
 
@@ -280,26 +334,30 @@ class MediaRouter(private val context: Context) {
                 val eyeDist = face.eyesDistance()
                 val boxWidth = (eyeDist * 2.6f).toInt()
                 val boxHeight = (eyeDist * 3.2f).toInt()
-                val left = (midPoint.x - boxWidth / 2f).toInt().coerceIn(0, source.width - 1)
-                val top = (midPoint.y - eyeDist * 1.2f).toInt().coerceIn(0, source.height - 1)
-                val actualW = boxWidth.coerceAtMost(source.width - left)
-                val actualH = boxHeight.coerceAtMost(source.height - top)
+                val left = (midPoint.x - boxWidth / 2f).toInt().coerceIn(0, normalizedSource.width - 1)
+                val top = (midPoint.y - eyeDist * 1.2f).toInt().coerceIn(0, normalizedSource.height - 1)
+                val actualW = boxWidth.coerceAtMost(normalizedSource.width - left)
+                val actualH = boxHeight.coerceAtMost(normalizedSource.height - top)
 
                 if (actualW > 32 && actualH > 32) {
-                    val cropped = Bitmap.createBitmap(source, left, top, actualW, actualH)
+                    val cropped = Bitmap.createBitmap(normalizedSource, left, top, actualW, actualH)
                     Log.d(TAG, "Rostro detectado y recortado (BlazeFace/FaceDetector): [x=$left, y=$top, ${actualW}x${actualH}]")
                     return Bitmap.createScaledBitmap(cropped, 224, 224, true)
                 }
             }
 
-            val minDim = minOf(source.width, source.height)
-            val cropX = (source.width - minDim) / 2
-            val cropY = (source.height - minDim) / 2
-            val centerCropped = Bitmap.createBitmap(source, cropX, cropY, minDim, minDim)
+            val minDim = minOf(normalizedSource.width, normalizedSource.height)
+            val cropX = (normalizedSource.width - minDim) / 2
+            val cropY = (normalizedSource.height - minDim) / 2
+            val centerCropped = Bitmap.createBitmap(normalizedSource, cropX, cropY, minDim, minDim)
             Bitmap.createScaledBitmap(centerCropped, 224, 224, true)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Detección facial omitida, aplicando escalado directo: ${e.message}")
-            Bitmap.createScaledBitmap(source, 224, 224, true)
+            try {
+                Bitmap.createScaledBitmap(source, 224, 224, true)
+            } catch (t: Throwable) {
+                createSyntheticFaceBitmap("Rostro")
+            }
         }
     }
 

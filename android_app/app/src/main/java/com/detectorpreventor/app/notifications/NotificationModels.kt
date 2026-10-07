@@ -3,6 +3,7 @@ package com.detectorpreventor.app.notifications
 import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.provider.Settings
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaType
@@ -15,6 +16,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 data class InterceptedNotification(
     val id: String,
@@ -190,3 +192,31 @@ object NotificationRepository {
         return false
     }
 }
+
+object NotificationMediaCache {
+    private val faceCache = ConcurrentHashMap<String, Bitmap>()
+    private val audioCache = ConcurrentHashMap<String, Bitmap>()
+    private val assetNameCache = ConcurrentHashMap<String, String>()
+
+    fun storeMedia(
+        notifId: String,
+        faceBitmap: Bitmap? = null,
+        audioBitmap: Bitmap? = null,
+        assetName: String? = null
+    ) {
+        faceBitmap?.let { faceCache[notifId] = it }
+        audioBitmap?.let { audioCache[notifId] = it }
+        assetName?.let { assetNameCache[notifId] = it }
+    }
+
+    fun getFaceBitmap(notifId: String): Bitmap? = faceCache[notifId]
+    fun getAudioBitmap(notifId: String): Bitmap? = audioCache[notifId]
+    fun getAssetName(notifId: String): String? = assetNameCache[notifId]
+
+    fun clear() {
+        faceCache.clear()
+        audioCache.clear()
+        assetNameCache.clear()
+    }
+}
+

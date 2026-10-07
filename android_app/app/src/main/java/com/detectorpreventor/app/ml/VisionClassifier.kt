@@ -76,6 +76,9 @@ class VisionClassifier(private val context: Context) {
         val hint = contextHint?.lowercase() ?: ""
         if (hint.contains("bonafide") || hint.contains("prístino") || hint.contains("pristino") || 
             hint.contains("auténtic") || hint.contains("autentic") || hint.contains("original") || 
+            hint.contains("image_real") || hint.contains("humano real") || hint.contains("video real") ||
+            hint.contains("rostro real") || hint.contains("foto familiar") || hint.contains("foto_original") ||
+            (hint.contains("real") && !hint.contains("fake") && !hint.contains("deepfake")) ||
             hint.contains("01_retrato") || hint.contains("02_retrato") || hint.contains("03_retrato") || 
             hint.contains("04_retrato") || hint.contains("05_retrato")) {
             if (!hint.contains("deepfake") && !hint.contains("faceswap") && !hint.contains("clonaci") && !hint.contains("fake")) {

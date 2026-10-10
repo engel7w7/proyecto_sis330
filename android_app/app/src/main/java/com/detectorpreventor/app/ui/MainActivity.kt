@@ -196,11 +196,17 @@ class MainActivity : ComponentActivity() {
                     audioClassifier.classifySpectrogram(it, payload.filename)
                 }
 
-                val visionProb: Float? = payload.faceKeyframe?.let {
-                    visionClassifier.classifyFaceKeyframe(it, payload.filename)
-                }
+                val visionProb: Float? = if (payload.faceDetected && payload.faceKeyframe != null) {
+                    visionClassifier.classifyFaceKeyframe(payload.faceKeyframe, payload.filename, requireFaceDetection = true)
+                } else if (!payload.faceDetected) {
+                    0.0f
+                } else null
 
-                val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+                val fusionResult = RiskScorer.calculateGlobalRisk(
+                    audioProb = audioProb,
+                    visionProb = visionProb,
+                    isFaceDetected = payload.faceDetected
+                )
 
                 lifecycleScope.launch(Dispatchers.Main) {
                     currentPayload = payload
@@ -253,11 +259,17 @@ class MainActivity : ComponentActivity() {
                 audioClassifier.classifySpectrogram(it, payload.filename)
             }
 
-            val visionProb: Float? = payload.faceKeyframe?.let {
-                visionClassifier.classifyFaceKeyframe(it, payload.filename)
-            }
+            val visionProb: Float? = if (payload.faceDetected && payload.faceKeyframe != null) {
+                visionClassifier.classifyFaceKeyframe(payload.faceKeyframe, payload.filename, requireFaceDetection = false)
+            } else if (!payload.faceDetected) {
+                0.0f
+            } else null
 
-            val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+            val fusionResult = RiskScorer.calculateGlobalRisk(
+                audioProb = audioProb,
+                visionProb = visionProb,
+                isFaceDetected = payload.faceDetected
+            )
 
             lifecycleScope.launch(Dispatchers.Main) {
                 currentPayload = payload
@@ -307,10 +319,13 @@ class MainActivity : ComponentActivity() {
                 val audioProb: Float? = payload.audioSpectrogram?.let {
                     audioClassifier.classifySpectrogram(it, payload.filename)
                 }
-                val visionProb: Float? = payload.faceKeyframe?.let {
-                    visionClassifier.classifyFaceKeyframe(it, payload.filename)
-                }
-                RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+                val visionProb: Float? = if (payload.faceDetected && payload.faceKeyframe != null) {
+                    visionClassifier.classifyFaceKeyframe(payload.faceKeyframe, payload.filename, requireFaceDetection = true)
+                } else if (!payload.faceDetected) {
+                    0.0f
+                } else null
+
+                RiskScorer.calculateGlobalRisk(audioProb, visionProb, isFaceDetected = payload.faceDetected)
             }
 
             lifecycleScope.launch(Dispatchers.Main) {

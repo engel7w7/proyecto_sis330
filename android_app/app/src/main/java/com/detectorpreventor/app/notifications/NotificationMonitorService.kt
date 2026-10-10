@@ -280,6 +280,8 @@ class NotificationMonitorService : NotificationListenerService() {
         var cachedFace: Bitmap? = null
         var cachedAudio: Bitmap? = null
 
+        var isFaceDetected = true
+
         when {
             isImageRelated -> {
                 mediaType = MediaType.IMAGE_ONLY
@@ -294,14 +296,23 @@ class NotificationMonitorService : NotificationListenerService() {
                 val pictureBitmap = realPicture
                     ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/01_retrato_humano_real_1.jpg")
                 cachedFace = pictureBitmap
-                visionProb = if (realPicture != null) {
-                    Log.i(TAG, "Ejecutando inferencia TFLite real sobre imagen capturada de la notificacion...")
-                    vClassifier.classifyFaceKeyframe(realPicture, null)
+                
+                if (realPicture != null) {
+                    isFaceDetected = vClassifier.checkFacePresence(realPicture)
+                    visionProb = if (isFaceDetected) {
+                        Log.i(TAG, "Ejecutando inferencia TFLite real sobre imagen capturada de la notificacion...")
+                        vClassifier.classifyFaceKeyframe(realPicture, null, requireFaceDetection = true)
+                    } else {
+                        Log.i(TAG, "Descarte automatico: Notificacion de imagen sin rostro humano detectado.")
+                        0.0f
+                    }
                 } else {
-                    pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
+                    visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
                 }
                 audioProb = null
-                displayText = if (containsFraudKeyword) {
+                displayText = if (!isFaceDetected) {
+                    "Fotografía recibida (Descarte automático: Sin rostro humano)"
+                } else if (containsFraudKeyword) {
                     "Fotografía sospechosa (Alerta: Posible FaceSwap)"
                 } else {
                     "Fotografía entrante recibida"
@@ -360,9 +371,14 @@ class NotificationMonitorService : NotificationListenerService() {
                     ?: loadAssetBitmap(if (suspiciousContext) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png")
                 cachedFace = faceBitmap
                 cachedAudio = specBitmap
+                
+                if (realVideoFrame != null) {
+                    isFaceDetected = vClassifier.checkFacePresence(realVideoFrame)
+                }
+
                 visionProb = if (realVideoFrame != null) {
                     Log.i(TAG, "Ejecutando inferencia TFLite real sobre keyframe de video capturado...")
-                    vClassifier.classifyFaceKeyframe(realVideoFrame, null)
+                    if (isFaceDetected) vClassifier.classifyFaceKeyframe(realVideoFrame, null, requireFaceDetection = true) else 0.0f
                 } else {
                     faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "deepfake" else "video real") }
                 }
@@ -381,7 +397,11 @@ class NotificationMonitorService : NotificationListenerService() {
             else -> return
         }
 
-        val fusionResult = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+        val fusionResult = RiskScorer.calculateGlobalRisk(
+            audioProb = audioProb, 
+            visionProb = visionProb, 
+            isFaceDetected = isFaceDetected
+        )
 
         val item = InterceptedNotification(
             id = UUID.randomUUID().toString(),

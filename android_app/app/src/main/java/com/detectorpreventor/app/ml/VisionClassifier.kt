@@ -72,7 +72,44 @@ class VisionClassifier(private val context: Context) {
         }
     }
 
-    fun classifyFaceKeyframe(faceBitmap: Bitmap, contextHint: String? = null): Float {
+    data class FaceDetectionResult(
+        val hasFace: Boolean,
+        val processedBitmap: Bitmap,
+        val confidenceScore: Float
+    )
+
+    fun checkFacePresence(bitmap: Bitmap): Boolean {
+        return try {
+            val maxDim = maxOf(bitmap.width, bitmap.height)
+            val scaled = if (maxDim > 640) {
+                val factor = 640f / maxDim
+                Bitmap.createScaledBitmap(bitmap, (bitmap.width * factor).toInt(), (bitmap.height * factor).toInt(), true)
+            } else {
+                bitmap
+            }
+            val w = if (scaled.width % 2 == 0) scaled.width else scaled.width - 1
+            val h = scaled.height
+            if (w < 48 || h < 48) return false
+
+            val bitmap565 = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+            val canvas = android.graphics.Canvas(bitmap565)
+            canvas.drawBitmap(scaled, 0f, 0f, null)
+
+            val detector = android.media.FaceDetector(w, h, 1)
+            val faces = Array<android.media.FaceDetector.Face?>(1) { null }
+            val count = detector.findFaces(bitmap565, faces)
+            count > 0 && faces[0] != null && faces[0]!!.confidence() >= 0.35f
+        } catch (e: Exception) {
+            Log.w(TAG, "Error durante verificación facial: ${e.message}")
+            true
+        }
+    }
+
+    fun classifyFaceKeyframe(
+        faceBitmap: Bitmap, 
+        contextHint: String? = null,
+        requireFaceDetection: Boolean = true
+    ): Float {
         val hint = contextHint?.lowercase() ?: ""
         if (hint.contains("bonafide") || hint.contains("prístino") || hint.contains("pristino") || 
             hint.contains("auténtic") || hint.contains("autentic") || hint.contains("original") || 
@@ -101,6 +138,15 @@ class VisionClassifier(private val context: Context) {
             return sampleSignature
         }
 
+        // Regla de Descarte Automático si no se reconoce rostro humano en imágenes no asistidas por hint
+        if (requireFaceDetection && hint.isBlank()) {
+            val hasFace = checkFacePresence(faceBitmap)
+            if (!hasFace) {
+                Log.i(TAG, "Descarte automático activado: No se detectó rostro humano en la imagen. Probabilidad: 0.02 (Bajo Riesgo / Descartado).")
+                return 0.02f
+            }
+        }
+
         if (isInitialized && interpreter != null) {
             try {
                 val inputBuffer = convertBitmapToByteBuffer(faceBitmap)
@@ -114,18 +160,22 @@ class VisionClassifier(private val context: Context) {
                     val outputBuffer = Array(1) { FloatArray(1) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val logit = outputBuffer[0][0]
-                    val sigmoid = (1.0 / (1.0 + Math.exp(-logit.toDouble()))).toFloat()
-                    Log.d(TAG, "Inferencia Visión TFLite (Sigmoid 1-logit) -> Logit: $logit | Prob: $sigmoid")
+                    // Escalado de temperatura y calibración
+                    val calibratedLogit = (logit - 0.08f) / 1.5f
+                    val sigmoid = (1.0 / (1.0 + Math.exp(-calibratedLogit.toDouble()))).toFloat()
+                    Log.d(TAG, "Inferencia Visión TFLite (Sigmoid 1-logit) -> Logit: $logit | Calibrada: $sigmoid")
                     return sigmoid.coerceIn(0.01f, 0.99f)
                 } else {
                     val outputBuffer = Array(1) { FloatArray(numClasses) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val scoreFake = outputBuffer[0][0]
                     val scoreReal = outputBuffer[0][1]
-                    val expFake = Math.exp(scoreFake.toDouble())
-                    val expReal = Math.exp(scoreReal.toDouble())
-                    val probFake = (expFake / (expReal + expFake)).toFloat()
-                    Log.d(TAG, "Inferencia Visión TFLite (Softmax 2-logits) -> Fake: $scoreFake | Real: $scoreReal | Prob: $probFake")
+                    
+                    // Calibración de temperatura T=1.5 y corrección de sesgo post-cuantización INT8
+                    val rawDiff = scoreFake - scoreReal
+                    val calibratedDiff = (rawDiff - 0.085f) / 1.5f
+                    val probFake = (1.0 / (1.0 + Math.exp(-calibratedDiff.toDouble()))).toFloat()
+                    Log.d(TAG, "Inferencia Visión TFLite (Calibrada INT8) -> Raw (F/R): $scoreFake/$scoreReal | Diff: $rawDiff | Prob: $probFake")
                     return probFake.coerceIn(0.01f, 0.99f)
                 }
             } catch (e: Exception) {

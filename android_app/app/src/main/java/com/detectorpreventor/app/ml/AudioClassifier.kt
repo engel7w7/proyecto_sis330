@@ -112,18 +112,21 @@ class AudioClassifier(private val context: Context) {
                     val outputBuffer = Array(1) { FloatArray(1) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val logit = outputBuffer[0][0]
-                    val sigmoid = (1.0 / (1.0 + Math.exp(-logit.toDouble()))).toFloat()
-                    Log.d(TAG, "Inferencia Audio TFLite (Sigmoid 1-logit) -> Logit: $logit | Prob: $sigmoid")
+                    val calibratedLogit = (logit - 0.70f) / 1.4f
+                    val sigmoid = (1.0 / (1.0 + Math.exp(-calibratedLogit.toDouble()))).toFloat()
+                    Log.d(TAG, "Inferencia Audio TFLite (Sigmoid 1-logit) -> Logit: $logit | Calibrada: $sigmoid")
                     return sigmoid.coerceIn(0.01f, 0.99f)
                 } else {
                     val outputBuffer = Array(1) { FloatArray(numClasses) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val scoreFake = outputBuffer[0][0]
                     val scoreReal = outputBuffer[0][1]
-                    val expFake = Math.exp(scoreFake.toDouble())
-                    val expReal = Math.exp(scoreReal.toDouble())
-                    val probFake = (expFake / (expReal + expFake)).toFloat()
-                    Log.d(TAG, "Inferencia Audio TFLite (Softmax 2-logits) -> Fake: $scoreFake | Real: $scoreReal | Prob: $probFake")
+                    
+                    // Calibración acústica post-cuantización con corrección de sesgo y temperatura T=1.4
+                    val rawDiff = scoreFake - scoreReal
+                    val calibratedDiff = (rawDiff - 0.70f) / 1.4f
+                    val probFake = (1.0 / (1.0 + Math.exp(-calibratedDiff.toDouble()))).toFloat()
+                    Log.d(TAG, "Inferencia Audio TFLite (Calibrada INT8) -> Raw (F/R): $scoreFake/$scoreReal | Diff: $rawDiff | Prob: $probFake")
                     return probFake.coerceIn(0.01f, 0.99f)
                 }
             } catch (e: Exception) {

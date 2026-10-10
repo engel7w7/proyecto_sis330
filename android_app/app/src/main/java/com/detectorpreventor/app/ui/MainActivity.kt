@@ -196,8 +196,9 @@ class MainActivity : ComponentActivity() {
                     audioClassifier.classifySpectrogram(it, payload.filename)
                 }
 
-                val visionProb: Float? = if (payload.faceDetected && payload.faceKeyframe != null) {
-                    visionClassifier.classifyFaceKeyframe(payload.faceKeyframe, payload.filename, requireFaceDetection = true)
+                val faceBmp = payload.faceKeyframe
+                val visionProb: Float? = if (payload.faceDetected && faceBmp != null) {
+                    visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = true)
                 } else if (!payload.faceDetected) {
                     0.0f
                 } else null
@@ -259,8 +260,9 @@ class MainActivity : ComponentActivity() {
                 audioClassifier.classifySpectrogram(it, payload.filename)
             }
 
-            val visionProb: Float? = if (payload.faceDetected && payload.faceKeyframe != null) {
-                visionClassifier.classifyFaceKeyframe(payload.faceKeyframe, payload.filename, requireFaceDetection = false)
+            val faceBmp = payload.faceKeyframe
+            val visionProb: Float? = if (payload.faceDetected && faceBmp != null) {
+                visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = false)
             } else if (!payload.faceDetected) {
                 0.0f
             } else null
@@ -319,8 +321,9 @@ class MainActivity : ComponentActivity() {
                 val audioProb: Float? = payload.audioSpectrogram?.let {
                     audioClassifier.classifySpectrogram(it, payload.filename)
                 }
-                val visionProb: Float? = if (payload.faceDetected && payload.faceKeyframe != null) {
-                    visionClassifier.classifyFaceKeyframe(payload.faceKeyframe, payload.filename, requireFaceDetection = true)
+                val faceBmp = payload.faceKeyframe
+                val visionProb: Float? = if (payload.faceDetected && faceBmp != null) {
+                    visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = true)
                 } else if (!payload.faceDetected) {
                     0.0f
                 } else null

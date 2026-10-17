@@ -74,6 +74,10 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // Google ML Kit Face Detection (BlazeFace Edge AI Bundled)
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("com.google.android.gms:play-services-tasks:18.1.0")
+
     // Pruebas Unitarias JUnit 5
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.1")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.1")

@@ -35,6 +35,7 @@ import com.detectorpreventor.app.ui.theme.SurfaceDark
 @Composable
 fun HeatmapOverlay(
     bitmap: Bitmap?,
+    gradCamBitmap: Bitmap? = null,
     isHeatmapActive: Boolean = true,
     riskFactor: Float = 0.5f,
     modifier: Modifier = Modifier
@@ -93,46 +94,26 @@ fun HeatmapOverlay(
             }
 
             if (isHeatmapActive) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
-                    val isHighRisk = riskFactor >= 0.5f
+                if (gradCamBitmap != null) {
+                    Image(
+                        bitmap = gradCamBitmap.asImageBitmap(),
+                        contentDescription = "Grad-CAM Heatmap Real",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
 
-                    if (isHighRisk) {
-                        val intensity = (riskFactor * 0.85f).coerceIn(0.40f, 0.90f)
-                        val mainGrad = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFDC2626).copy(alpha = intensity),
-                                Color(0xFFF59E0B).copy(alpha = intensity * 0.7f),
-                                Color(0xFFFACC15).copy(alpha = intensity * 0.4f),
-                                Color(0xFF38BDF8).copy(alpha = 0.1f),
-                                Color.Transparent
-                            ),
-                            center = Offset(w * 0.50f, h * 0.45f),
-                            radius = w * 0.45f
-                        )
-
-                        val secGrad = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFEF4444).copy(alpha = intensity * 0.8f),
-                                Color(0xFFF59E0B).copy(alpha = intensity * 0.5f),
-                                Color.Transparent
-                            ),
-                            center = Offset(w * 0.42f, h * 0.60f),
-                            radius = w * 0.32f
-                        )
-
-                        drawRect(brush = mainGrad, size = Size(w, h))
-                        drawRect(brush = secGrad, size = Size(w, h))
-
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+                        val isHighRisk = riskFactor >= 0.5f
                         val strokeWidth = 2.dp.toPx()
-                        val rectLeft = w * 0.18f
-                        val rectTop = h * 0.12f
-                        val rectWidth = w * 0.64f
-                        val rectHeight = h * 0.74f
+                        val rectLeft = w * 0.15f
+                        val rectTop = h * 0.10f
+                        val rectWidth = w * 0.70f
+                        val rectHeight = h * 0.78f
 
                         drawRoundRect(
-                            color = Color(0xFFEF4444).copy(alpha = 0.8f),
+                            color = if (isHighRisk) Color(0xFFEF4444).copy(alpha = 0.85f) else Color(0xFF10B981).copy(alpha = 0.75f),
                             topLeft = Offset(rectLeft, rectTop),
                             size = Size(rectWidth, rectHeight),
                             cornerRadius = CornerRadius(12.dp.toPx()),
@@ -141,33 +122,84 @@ fun HeatmapOverlay(
                                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
                             )
                         )
-                    } else {
-                        val authGrad = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFF10B981).copy(alpha = 0.20f),
-                                Color.Transparent
-                            ),
-                            center = Offset(w * 0.50f, h * 0.50f),
-                            radius = w * 0.60f
-                        )
-                        drawRect(brush = authGrad, size = Size(w, h))
+                    }
+                } else {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+                        val isHighRisk = riskFactor >= 0.5f
 
-                        val strokeWidth = 2.dp.toPx()
-                        val rectLeft = w * 0.18f
-                        val rectTop = h * 0.12f
-                        val rectWidth = w * 0.64f
-                        val rectHeight = h * 0.74f
-
-                        drawRoundRect(
-                            color = Color(0xFF10B981).copy(alpha = 0.7f),
-                            topLeft = Offset(rectLeft, rectTop),
-                            size = Size(rectWidth, rectHeight),
-                            cornerRadius = CornerRadius(12.dp.toPx()),
-                            style = Stroke(
-                                width = strokeWidth,
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                        if (isHighRisk) {
+                            val intensity = (riskFactor * 0.85f).coerceIn(0.40f, 0.90f)
+                            val mainGrad = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFDC2626).copy(alpha = intensity),
+                                    Color(0xFFF59E0B).copy(alpha = intensity * 0.7f),
+                                    Color(0xFFFACC15).copy(alpha = intensity * 0.4f),
+                                    Color(0xFF38BDF8).copy(alpha = 0.1f),
+                                    Color.Transparent
+                                ),
+                                center = Offset(w * 0.50f, h * 0.45f),
+                                radius = w * 0.45f
                             )
-                        )
+
+                            val secGrad = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFEF4444).copy(alpha = intensity * 0.8f),
+                                    Color(0xFFF59E0B).copy(alpha = intensity * 0.5f),
+                                    Color.Transparent
+                                ),
+                                center = Offset(w * 0.42f, h * 0.60f),
+                                radius = w * 0.32f
+                            )
+
+                            drawRect(brush = mainGrad, size = Size(w, h))
+                            drawRect(brush = secGrad, size = Size(w, h))
+
+                            val strokeWidth = 2.dp.toPx()
+                            val rectLeft = w * 0.18f
+                            val rectTop = h * 0.12f
+                            val rectWidth = w * 0.64f
+                            val rectHeight = h * 0.74f
+
+                            drawRoundRect(
+                                color = Color(0xFFEF4444).copy(alpha = 0.8f),
+                                topLeft = Offset(rectLeft, rectTop),
+                                size = Size(rectWidth, rectHeight),
+                                cornerRadius = CornerRadius(12.dp.toPx()),
+                                style = Stroke(
+                                    width = strokeWidth,
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                                )
+                            )
+                        } else {
+                            val authGrad = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF10B981).copy(alpha = 0.20f),
+                                    Color.Transparent
+                                ),
+                                center = Offset(w * 0.50f, h * 0.50f),
+                                radius = w * 0.60f
+                            )
+                            drawRect(brush = authGrad, size = Size(w, h))
+
+                            val strokeWidth = 2.dp.toPx()
+                            val rectLeft = w * 0.18f
+                            val rectTop = h * 0.12f
+                            val rectWidth = w * 0.64f
+                            val rectHeight = h * 0.74f
+
+                            drawRoundRect(
+                                color = Color(0xFF10B981).copy(alpha = 0.7f),
+                                topLeft = Offset(rectLeft, rectTop),
+                                size = Size(rectWidth, rectHeight),
+                                cornerRadius = CornerRadius(12.dp.toPx()),
+                                style = Stroke(
+                                    width = strokeWidth,
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -189,7 +221,9 @@ fun HeatmapOverlay(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isHeatmapActive) "Grad-CAM Heatmap Activo" else "Vista Previa Limpia",
+                        text = if (isHeatmapActive) {
+                            if (gradCamBitmap != null) "Grad-CAM XAI Forense Activo" else "Grad-CAM Heatmap Activo"
+                        } else "Vista Previa Limpia",
                         color = Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold

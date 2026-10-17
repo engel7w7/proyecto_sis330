@@ -342,8 +342,17 @@ fun ScannerView(
         }
         val riskFactor = (fusionResult?.globalRiskPercentage ?: 50f) / 100f
 
+        val currentGradCam = if (payload?.mediaType == MediaType.VIDEO_MULTIMODAL) {
+            if (multimodalTab == 0) payload.gradCamBitmap else (payload.audioGradCamBitmap ?: payload.gradCamBitmap)
+        } else if (payload?.mediaType == MediaType.AUDIO_ONLY) {
+            payload.audioGradCamBitmap ?: payload.gradCamBitmap
+        } else {
+            payload?.gradCamBitmap
+        }
+
         HeatmapOverlay(
             bitmap = previewBitmap,
+            gradCamBitmap = currentGradCam,
             isHeatmapActive = isHeatmapEnabled,
             riskFactor = riskFactor
         )

@@ -203,6 +203,14 @@ class MainActivity : ComponentActivity() {
                     0.0f
                 } else null
 
+                val visionGradCam = visionClassifier.getLastGradCamHeatmap()
+                val audioGradCam = audioClassifier.getLastGradCamHeatmap()
+                val primaryGradCam = if (payload.mediaType == MediaType.AUDIO_ONLY) audioGradCam else (visionGradCam ?: audioGradCam)
+                payload = payload.copy(
+                    gradCamBitmap = primaryGradCam,
+                    audioGradCamBitmap = audioGradCam
+                )
+
                 val fusionResult = RiskScorer.calculateGlobalRisk(
                     audioProb = audioProb,
                     visionProb = visionProb,
@@ -267,6 +275,14 @@ class MainActivity : ComponentActivity() {
                 0.0f
             } else null
 
+            val visionGradCam = visionClassifier.getLastGradCamHeatmap()
+            val audioGradCam = audioClassifier.getLastGradCamHeatmap()
+            val primaryGradCam = if (payload.mediaType == MediaType.AUDIO_ONLY) audioGradCam else (visionGradCam ?: audioGradCam)
+            payload = payload.copy(
+                gradCamBitmap = primaryGradCam,
+                audioGradCamBitmap = audioGradCam
+            )
+
             val fusionResult = RiskScorer.calculateGlobalRisk(
                 audioProb = audioProb,
                 visionProb = visionProb,
@@ -327,6 +343,11 @@ class MainActivity : ComponentActivity() {
                 } else if (!payload.faceDetected) {
                     0.0f
                 } else null
+
+                val gradCam = visionClassifier.getLastGradCamHeatmap()
+                if (gradCam != null) {
+                    payload = payload.copy(gradCamBitmap = gradCam)
+                }
 
                 RiskScorer.calculateGlobalRisk(audioProb, visionProb, isFaceDetected = payload.faceDetected)
             }

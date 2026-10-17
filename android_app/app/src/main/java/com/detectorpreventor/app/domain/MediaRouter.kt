@@ -6,12 +6,15 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PointF
-import android.graphics.RectF
-import android.media.FaceDetector
+import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.detectorpreventor.app.notifications.NotificationMediaCache
 import com.detectorpreventor.app.notifications.NotificationRepository
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +31,8 @@ data class ProcessedMediaPayload(
     val mediaType: MediaType,
     val audioSpectrogram: Bitmap? = null,
     val faceKeyframe: Bitmap? = null,
+    val gradCamBitmap: Bitmap? = null,
+    val audioGradCamBitmap: Bitmap? = null,
     val filename: String = "",
     val faceDetected: Boolean = true,
     val discardReason: String? = null
@@ -37,6 +42,16 @@ class MediaRouter(private val context: Context) {
 
     companion object {
         private const val TAG = "MediaRouter"
+    }
+
+    private val blazeFaceDetector: FaceDetector by lazy {
+        val options = FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+            .setMinFaceSize(0.12f)
+            .build()
+        FaceDetection.getClient(options)
     }
 
     suspend fun processIncomingUri(uri: Uri, mimeType: String?): ProcessedMediaPayload = withContext(Dispatchers.IO) {
@@ -319,60 +334,51 @@ class MediaRouter(private val context: Context) {
     private fun detectAndCropFace(source: Bitmap): Pair<Bitmap, Boolean> {
         return try {
             val maxDim = maxOf(source.width, source.height)
-            val normalizedSource = if (maxDim > 640) {
-                val scale = 640f / maxDim
+            val normalizedSource = if (maxDim > 800) {
+                val scale = 800f / maxDim
                 Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true)
             } else {
                 source
             }
 
-            val w = if (normalizedSource.width % 2 == 0) normalizedSource.width else normalizedSource.width - 1
-            val h = normalizedSource.height
-            if (w < 48 || h < 48) return Pair(Bitmap.createScaledBitmap(normalizedSource, 224, 224, true), false)
+            val inputImage = InputImage.fromBitmap(normalizedSource, 0)
+            val faces = Tasks.await(blazeFaceDetector.process(inputImage))
 
-            val bitmap565 = if (normalizedSource.config == Bitmap.Config.RGB_565 && normalizedSource.width == w) {
-                normalizedSource
-            } else {
-                val copy = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
-                val canvas = Canvas(copy)
-                canvas.drawBitmap(normalizedSource, 0f, 0f, null)
-                copy
-            }
+            if (faces.isNotEmpty()) {
+                val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() } ?: faces[0]
+                val box = face.boundingBox
 
-            val maxFaces = 1
-            val faces = Array<FaceDetector.Face?>(maxFaces) { null }
-            val detector = FaceDetector(w, h, maxFaces)
-            val count = detector.findFaces(bitmap565, faces)
+                // Margen pericial forense del 15% para abarcar frente, mejillas y barbilla
+                val marginX = (box.width() * 0.15f).toInt()
+                val marginY = (box.height() * 0.15f).toInt()
+                val left = (box.left - marginX).coerceIn(0, normalizedSource.width - 1)
+                val top = (box.top - marginY).coerceIn(0, normalizedSource.height - 1)
+                val right = (box.right + marginX).coerceIn(left + 1, normalizedSource.width)
+                val bottom = (box.bottom + marginY).coerceIn(top + 1, normalizedSource.height)
+                val cropW = right - left
+                val cropH = bottom - top
 
-            if (count > 0 && faces[0] != null && faces[0]!!.confidence() >= 0.35f) {
-                val face = faces[0]!!
-                val midPoint = PointF()
-                face.getMidPoint(midPoint)
-                val eyeDist = face.eyesDistance()
-                val boxWidth = (eyeDist * 2.6f).toInt()
-                val boxHeight = (eyeDist * 3.2f).toInt()
-                val left = (midPoint.x - boxWidth / 2f).toInt().coerceIn(0, normalizedSource.width - 1)
-                val top = (midPoint.y - eyeDist * 1.2f).toInt().coerceIn(0, normalizedSource.height - 1)
-                val actualW = boxWidth.coerceAtMost(normalizedSource.width - left)
-                val actualH = boxHeight.coerceAtMost(normalizedSource.height - top)
-
-                if (actualW > 32 && actualH > 32) {
-                    val cropped = Bitmap.createBitmap(normalizedSource, left, top, actualW, actualH)
-                    Log.d(TAG, "Rostro detectado y recortado (BlazeFace/FaceDetector): [x=$left, y=$top, ${actualW}x${actualH}]")
+                if (cropW > 24 && cropH > 24) {
+                    val cropped = Bitmap.createBitmap(normalizedSource, left, top, cropW, cropH)
+                    Log.d(TAG, "BlazeFace: Rostro detectado [x=$left, y=$top, dim=${cropW}x${cropH}]. Margen pericial 15% aplicado.")
                     return Pair(Bitmap.createScaledBitmap(cropped, 224, 224, true), true)
                 }
             }
 
-            // Descarte automático si no se localiza ningún rostro humano
-            Log.i(TAG, "No se detectó rostro humano en la imagen. Activando bandera de descarte.")
+            // Descarte automático si no se detecta ningún rostro humano
+            Log.i(TAG, "BlazeFace: No se detectó rostro humano en la imagen. Protocolo de descarte automático activo.")
             val minDim = minOf(normalizedSource.width, normalizedSource.height)
             val cropX = (normalizedSource.width - minDim) / 2
             val cropY = (normalizedSource.height - minDim) / 2
             val centerCropped = Bitmap.createBitmap(normalizedSource, cropX, cropY, minDim, minDim)
             Pair(Bitmap.createScaledBitmap(centerCropped, 224, 224, true), false)
         } catch (e: Throwable) {
-            Log.w(TAG, "Detección facial con fallback: ${e.message}")
-            Pair(Bitmap.createScaledBitmap(source, 224, 224, true), false)
+            Log.w(TAG, "Detección facial BlazeFace con fallback: ${e.message}")
+            val minDim = minOf(source.width, source.height)
+            val cropX = (source.width - minDim) / 2
+            val cropY = (source.height - minDim) / 2
+            val centerCropped = Bitmap.createBitmap(source, cropX, cropY, minDim, minDim)
+            Pair(Bitmap.createScaledBitmap(centerCropped, 224, 224, true), false)
         }
     }
 

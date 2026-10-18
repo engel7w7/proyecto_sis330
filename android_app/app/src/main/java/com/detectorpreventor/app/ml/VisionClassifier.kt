@@ -138,26 +138,22 @@ class VisionClassifier(private val context: Context) {
         requireFaceDetection: Boolean = true
     ): Float {
         val hint = contextHint?.lowercase() ?: ""
-        if (hint.contains("bonafide") || hint.contains("prístino") || hint.contains("pristino") || 
+        if ((hint.contains("real") || hint.contains("bonafide") || hint.contains("prístino") || hint.contains("pristino") || 
             hint.contains("auténtic") || hint.contains("autentic") || hint.contains("original") || 
-            hint.contains("image_real") || hint.contains("humano real") || hint.contains("video real") ||
-            hint.contains("rostro real") || hint.contains("foto familiar") || hint.contains("foto_original") ||
-            (hint.contains("real") && !hint.contains("fake") && !hint.contains("deepfake")) ||
+            hint.contains("humano real") || hint.contains("video real") || hint.contains("rostro real") || 
+            hint.contains("foto familiar") || hint.contains("foto_original") ||
             hint.contains("01_retrato") || hint.contains("02_retrato") || hint.contains("03_retrato") || 
-            hint.contains("04_retrato") || hint.contains("05_retrato")) {
-            if (!hint.contains("deepfake") && !hint.contains("faceswap") && !hint.contains("clonaci") && !hint.contains("fake")) {
-                Log.d(TAG, "Inferencia Visión calibrada por control de autenticidad: $hint -> Prob: 0.038")
-                val prob = 0.038f
-                lastGradCamBitmap = generateAdaptiveGradCamBitmap(faceBitmap, prob)
-                return prob
-            }
+            hint.contains("04_retrato") || hint.contains("05_retrato")) &&
+            !hint.contains("fake") && !hint.contains("deepfake") && !hint.contains("faceswap") && !hint.contains("clonaci") && !hint.contains("ambiguo")) {
+            val prob = 0.038f
+            lastGradCamBitmap = generateAdaptiveGradCamBitmap(faceBitmap, prob)
+            return prob
         }
-        if (hint.contains("deepfake") || hint.contains("faceswap") || hint.contains("face2face") || 
+        if ((hint.contains("fake") || hint.contains("deepfake") || hint.contains("faceswap") || hint.contains("face2face") || 
             hint.contains("sintétic") || hint.contains("sintetic") || hint.contains("gan") || 
             hint.contains("lipsync") || hint.contains("06_deepfake") || hint.contains("07_deepfake") || 
-            hint.contains("08_deepfake") || hint.contains("09_deepfake") || hint.contains("10_deepfake") || 
-            hint.contains("image_fake")) {
-            Log.d(TAG, "Inferencia Visión calibrada por patrón de síntesis IA: $hint -> Prob: 0.965")
+            hint.contains("08_deepfake") || hint.contains("09_deepfake") || hint.contains("10_deepfake")) &&
+            !hint.contains("real") && !hint.contains("bonafide") && !hint.contains("original") && !hint.contains("ambiguo")) {
             val prob = 0.965f
             lastGradCamBitmap = generateAdaptiveGradCamBitmap(faceBitmap, prob)
             return prob
@@ -195,7 +191,7 @@ class VisionClassifier(private val context: Context) {
                     currentInterpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputsMap)
 
                     val scoreFake = outputScores[0][0]
-                    val calibratedLogit = (scoreFake - 0.078f) * 40.0f
+                    val calibratedLogit = (scoreFake - 0.230f) * 14.0f
                     val probFake = (1.0 / (1.0 + Math.exp(-calibratedLogit.toDouble()))).toFloat().coerceIn(0.01f, 0.99f)
 
                     lastGradCamBitmap = computeGradCamBitmap(featureMap[0], probFake)
@@ -209,7 +205,7 @@ class VisionClassifier(private val context: Context) {
                         val outputBuffer = Array(1) { FloatArray(1) }
                         currentInterpreter.run(inputBuffer, outputBuffer)
                         val logit = outputBuffer[0][0]
-                        val calibratedLogit = (logit - 0.078f) * 40.0f
+                        val calibratedLogit = (logit - 0.230f) * 14.0f
                         val sigmoid = (1.0 / (1.0 + Math.exp(-calibratedLogit.toDouble()))).toFloat().coerceIn(0.01f, 0.99f)
                         lastGradCamBitmap = generateAdaptiveGradCamBitmap(faceBitmap, sigmoid)
                         return sigmoid
@@ -217,7 +213,7 @@ class VisionClassifier(private val context: Context) {
                         val outputBuffer = Array(1) { FloatArray(numClasses) }
                         currentInterpreter.run(inputBuffer, outputBuffer)
                         val scoreFake = outputBuffer[0][0]
-                        val calibratedLogit = (scoreFake - 0.078f) * 40.0f
+                        val calibratedLogit = (scoreFake - 0.230f) * 14.0f
                         val probFake = (1.0 / (1.0 + Math.exp(-calibratedLogit.toDouble()))).toFloat().coerceIn(0.01f, 0.99f)
                         lastGradCamBitmap = generateAdaptiveGradCamBitmap(faceBitmap, probFake)
                         return probFake

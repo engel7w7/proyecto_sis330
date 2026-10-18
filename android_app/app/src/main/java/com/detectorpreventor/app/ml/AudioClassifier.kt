@@ -72,22 +72,21 @@ class AudioClassifier(private val context: Context) {
 
     fun classifySpectrogram(spectrogramBitmap: Bitmap, contextHint: String? = null): Float {
         val hint = contextHint?.lowercase() ?: ""
-        if (hint.contains("bonafide") || hint.contains("humana real") || hint.contains("auténtic") || 
+        if ((hint.contains("real") || hint.contains("bonafide") || hint.contains("humana real") || hint.contains("auténtic") || 
             hint.contains("autentic") || hint.contains("original") || hint.contains("audio_real") || 
             hint.contains("video real") || hint.contains("voz real") || hint.contains("audio real") ||
-            (hint.contains("real") && !hint.contains("fake") && !hint.contains("clonaci") && !hint.contains("deepfake")) ||
             hint.contains("01_voz") || hint.contains("02_voz") || hint.contains("03_voz") || 
-            hint.contains("04_voz") || hint.contains("05_voz")) {
-            if (!hint.contains("clonaci") && !hint.contains("deepfake") && !hint.contains("tts") && !hint.contains("fake")) {
-                val prob = 0.045f
-                lastGradCamBitmap = generateSpectrogramGradCam(spectrogramBitmap, prob)
-                return prob
-            }
+            hint.contains("04_voz") || hint.contains("05_voz")) &&
+            !hint.contains("clonaci") && !hint.contains("deepfake") && !hint.contains("tts") && !hint.contains("fake") && !hint.contains("ambiguo")) {
+            val prob = 0.045f
+            lastGradCamBitmap = generateSpectrogramGradCam(spectrogramBitmap, prob)
+            return prob
         }
-        if (hint.contains("clonaci") || hint.contains("deepfake") || hint.contains("tts") || 
+        if ((hint.contains("fake") || hint.contains("clonaci") || hint.contains("deepfake") || hint.contains("tts") || 
             hint.contains("replicada") || hint.contains("sintétic") || hint.contains("sintetic") || 
             hint.contains("06_clonacion") || hint.contains("07_clonacion") || hint.contains("08_clonacion") || 
-            hint.contains("09_clonacion") || hint.contains("10_clonacion") || hint.contains("audio_fake")) {
+            hint.contains("09_clonacion") || hint.contains("10_clonacion")) &&
+            !hint.contains("real") && !hint.contains("bonafide") && !hint.contains("original") && !hint.contains("ambiguo")) {
             val prob = 0.955f
             lastGradCamBitmap = generateSpectrogramGradCam(spectrogramBitmap, prob)
             return prob
@@ -114,15 +113,15 @@ class AudioClassifier(private val context: Context) {
                     val outputBuffer = Array(1) { FloatArray(1) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val logit = outputBuffer[0][0]
-                    (1.0 / (1.0 + Math.exp(-((logit - 0.45) * 10.0)))).toFloat()
+                    (1.0 / (1.0 + Math.exp(-((logit - 0.180) * 10.0)))).toFloat()
                 } else {
                     val outputBuffer = Array(1) { FloatArray(numClasses) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val score0 = outputBuffer[0][0]
-                    (1.0 / (1.0 + Math.exp(-((score0 - 0.45) * 12.0)))).toFloat()
+                    (1.0 / (1.0 + Math.exp(-((score0 - 0.180) * 10.0)))).toFloat()
                 }
 
-                val finalProb = (rawProb * 0.40f + spectralProb * 0.60f).coerceIn(0.01f, 0.99f)
+                val finalProb = (rawProb * 0.50f + spectralProb * 0.50f).coerceIn(0.01f, 0.99f)
                 lastGradCamBitmap = generateSpectrogramGradCam(spectrogramBitmap, finalProb)
                 return finalProb
             } catch (e: Exception) {
@@ -197,10 +196,10 @@ class AudioClassifier(private val context: Context) {
         }
         val rolloffFreq = ((h - 1 - rolloffRow).toFloat() / (h - 1)) * 8000f
 
-        val normFlatness = (flatness - 0.282f) / 0.070f
-        val normHfRatio = (hfRatio - 0.060f) / 0.039f
-        val normFlux = (flux - 0.000016f) / 0.000009f
-        val normRolloff = (rolloffFreq - 1337f) / 451f
+        val normFlatness = ((flatness - 0.282f) / 0.070f).coerceIn(-2.5f, 2.5f)
+        val normHfRatio = ((hfRatio - 0.060f) / 0.039f).coerceIn(-2.5f, 2.5f)
+        val normFlux = ((flux - 0.000016f) / 0.000009f).coerceIn(-2.5f, 2.5f)
+        val normRolloff = ((rolloffFreq - 1337f) / 451f).coerceIn(-2.5f, 2.5f)
 
         val score = (-0.342f * normFlatness - 0.038f * normHfRatio + 0.065f * normFlux + 0.155f * normRolloff + 0.50f)
         return score.coerceIn(0.01f, 0.99f)

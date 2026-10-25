@@ -19,8 +19,8 @@ data class FusionResult(
 
 object RiskScorer {
 
-    private const val DEFAULT_WEIGHT_AUDIO = 0.6f
-    private const val DEFAULT_WEIGHT_VISION = 0.4f
+    private const val DEFAULT_WEIGHT_AUDIO = 0.55f
+    private const val DEFAULT_WEIGHT_VISION = 0.45f
 
     fun calculateGlobalRisk(
         audioProb: Float?,
@@ -86,6 +86,44 @@ object RiskScorer {
             diagnosticSummary = summary,
             wasFaceDiscarded = !isFaceDetected
         )
+    }
+
+    fun calculateVideoRisk(
+        audioProb: Float?,
+        frameProbs: List<Float>,
+        isFaceDetected: Boolean = true
+    ): FusionResult {
+        val alteredFramesCount = frameProbs.count { it >= 0.5f }
+        val isMajorityAltered = frameProbs.isNotEmpty() && (alteredFramesCount >= 3 || (frameProbs.size in 1..4 && alteredFramesCount.toFloat() / frameProbs.size >= 0.6f))
+        val isAudioCloned = (audioProb ?: 0f) >= 0.5f
+
+        val avgVisionProb = if (frameProbs.isNotEmpty()) frameProbs.average().toFloat() else 0.0f
+
+        val baseFusion = calculateGlobalRisk(
+            audioProb = audioProb,
+            visionProb = avgVisionProb,
+            customWeightAudio = DEFAULT_WEIGHT_AUDIO,
+            customWeightVision = DEFAULT_WEIGHT_VISION,
+            isFaceDetected = isFaceDetected
+        )
+
+        return if (isAudioCloned || isMajorityAltered) {
+            val elevatedScore = maxOf(baseFusion.globalRiskPercentage, 85.0f)
+            val reason = if (isAudioCloned && isMajorityAltered) {
+                "Pista vocal clonada y mayoria de fotogramas alterados ($alteredFramesCount/${frameProbs.size})"
+            } else if (isAudioCloned) {
+                "Pista de audio clasificada matematicamente como clonada (STFT)"
+            } else {
+                "Deteccion sostenida de alteraciones faciales: Regla 3/5 ($alteredFramesCount/${frameProbs.size} frames manipulados)"
+            }
+            baseFusion.copy(
+                globalRiskPercentage = elevatedScore,
+                riskLevel = RiskLevel.ALTO,
+                diagnosticSummary = baseFusion.diagnosticSummary + "\n• Alerta Critica (Regla 3/5 Video): $reason."
+            )
+        } else {
+            baseFusion
+        }
     }
 
     private fun generateDiagnosticText(

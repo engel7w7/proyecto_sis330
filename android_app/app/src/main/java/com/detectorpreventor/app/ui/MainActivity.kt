@@ -421,36 +421,8 @@ class MainActivity : ComponentActivity() {
                 else -> Pair(null, null)
             }
 
-            val fusion = if (mediaType == MediaType.UNKNOWN) {
-                val hasUrl = text.contains("http://", ignoreCase = true) || text.contains("https://", ignoreCase = true)
-                val score = if (isThreat) {
-                    if (hasUrl) 88f else 95f
-                } else {
-                    if (hasUrl) 8f else 3f
-                }
-                val rLevel = if (isThreat) com.detectorpreventor.app.domain.RiskLevel.ALTO else com.detectorpreventor.app.domain.RiskLevel.BAJO
-                val desc = if (isThreat) {
-                    if (hasUrl) {
-                        "Alerta Phishing: Enlace externo con solicitud bancaria urgente o patrón de fraude."
-                    } else {
-                        "Alerta crítica: Mensaje de número no registrado con patrones de urgencia/fraude."
-                    }
-                } else {
-                    if (hasUrl) {
-                        "Enlace compartido verificado de plataforma conocida (TikTok / YouTube). Sin riesgo."
-                    } else {
-                        "Mensaje conversacional auténtico verificado."
-                    }
-                }
-                com.detectorpreventor.app.domain.FusionResult(
-                    globalRiskPercentage = score,
-                    audioFraudProb = 0f,
-                    visionFraudProb = 0f,
-                    riskLevel = rLevel,
-                    weightAudio = 0.5f,
-                    weightVision = 0.5f,
-                    diagnosticSummary = desc
-                )
+            val fusion = if (mediaType == MediaType.VIDEO_MULTIMODAL) {
+                RiskScorer.calculateVideoRisk(audioProb, listOfNotNull(visionProb), isFaceDetected = true)
             } else {
                 RiskScorer.calculateGlobalRisk(audioProb, visionProb)
             }

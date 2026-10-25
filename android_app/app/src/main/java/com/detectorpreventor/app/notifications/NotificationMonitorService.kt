@@ -15,8 +15,10 @@ import android.provider.MediaStore
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaRouter
 import com.detectorpreventor.app.domain.MediaType
+import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
@@ -33,23 +35,14 @@ class NotificationMonitorService : NotificationListenerService() {
                 return
             }
 
-            try {
-                val componentName = ComponentName(context, NotificationMonitorService::class.java)
-                val pm = context.packageManager
-
-                pm.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-                pm.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-                Log.i(TAG, "Ciclo de componente ejecutado para re-vincular NotificationMonitorService.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error al forzar re-vinculacion del servicio: ${e.message}")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    val componentName = ComponentName(context, NotificationMonitorService::class.java)
+                    requestRebind(componentName)
+                    Log.i(TAG, "Revinculacion solicitada correctamente via requestRebind para NotificationMonitorService.")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fallo al solicitar requestRebind: ${e.message}")
+                }
             }
         }
     }
@@ -118,19 +111,8 @@ class NotificationMonitorService : NotificationListenerService() {
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
-        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
-            Log.d(TAG, "Notificacion ignorada por FLAG_GROUP_SUMMARY ($pkgName)")
-            return
-        }
-
-        val template = extras.getString(Notification.EXTRA_TEMPLATE) ?: ""
-        val compatTemplate = extras.getString("androidx.core.app.extra.COMPAT_TEMPLATE") ?: ""
-        if (template.contains("InboxStyle", ignoreCase = true) || compatTemplate.contains("InboxStyle", ignoreCase = true)) {
-            Log.d(TAG, "Notificacion ignorada por ser plantilla InboxStyle multi-chat ($pkgName)")
-            return
-        }
-
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+        val bigTitle = extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()?.trim()
         val conversationTitle = extras.getCharSequence("android.conversationTitle")?.toString()?.trim()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim() ?: ""
@@ -140,9 +122,14 @@ class NotificationMonitorService : NotificationListenerService() {
             .mapNotNull { it?.toString()?.trim() }
             .filter { it.isNotBlank() }
 
-        if (isWhatsApp && (rawTitle.isNullOrBlank() || rawTitle == "WhatsApp") &&
+        if (isWhatsApp && (rawTitle.isNullOrBlank() || rawTitle.equals("WhatsApp", ignoreCase = true)) &&
             (text.contains("mensajes de", ignoreCase = true) || text.contains("messages from", ignoreCase = true))) {
-            Log.d(TAG, "Notificacion ignorada por ser resumen agregado multi-chat de WhatsApp ($text)")
+            Log.d(TAG, "Notificacion ignorada por ser resumen multi-chat generico de WhatsApp ($text)")
+            return
+        }
+
+        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0 && (rawTitle.isNullOrBlank() || rawTitle.equals("WhatsApp", ignoreCase = true))) {
+            Log.d(TAG, "Notificacion ignorada por FLAG_GROUP_SUMMARY generico ($pkgName)")
             return
         }
 
@@ -217,11 +204,16 @@ class NotificationMonitorService : NotificationListenerService() {
             return
         }
 
+        val hasPictureExtra = extras.get(Notification.EXTRA_PICTURE) != null ||
+                extras.get("android.pictureIcon") != null
+
         val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
                 combinedContent.contains("video", ignoreCase = true) ||
                 combinedContent.contains("vídeo", ignoreCase = true) ||
                 combinedContent.contains("videollamada", ignoreCase = true) ||
-                combinedContent.contains("videonota", ignoreCase = true)
+                combinedContent.contains("videonota", ignoreCase = true) ||
+                combinedContent.contains("🎥") ||
+                combinedContent.contains("📹")
 
         val durationRegex = Regex("""\b\d{1,2}:\d{2}\b""")
         val isAudioRelated = !isVideoRelated && (
@@ -231,27 +223,45 @@ class NotificationMonitorService : NotificationListenerService() {
                 combinedContent.contains("mensaje de voz", ignoreCase = true) ||
                 combinedContent.contains("voice message", ignoreCase = true) ||
                 combinedContent.contains("voice note", ignoreCase = true) ||
+                combinedContent.contains("🎤") ||
+                combinedContent.contains("🎵") ||
+                combinedContent.contains("PTT", ignoreCase = true) ||
                 (isWhatsApp && durationRegex.containsMatchIn(combinedContent))
         )
 
         val isImageRelated = !isVideoRelated && !isAudioRelated && (
+                hasPictureExtra ||
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY) ||
                 combinedContent.contains("foto", ignoreCase = true) ||
                 combinedContent.contains("imagen", ignoreCase = true) ||
                 combinedContent.contains("photo", ignoreCase = true) ||
-                combinedContent.contains("image", ignoreCase = true)
+                combinedContent.contains("image", ignoreCase = true) ||
+                combinedContent.contains("📷") ||
+                combinedContent.contains("🖼")
         )
 
-        if (!isVideoRelated && !isAudioRelated && !isImageRelated) {
-            return
+        val isTextRelated = !isVideoRelated && !isAudioRelated && !isImageRelated
+
+        val candidateSender = when {
+            !messageSender.isNullOrBlank() && !messageSender.equals("WhatsApp", ignoreCase = true) -> messageSender
+            !conversationTitle.isNullOrBlank() && !conversationTitle.equals("WhatsApp", ignoreCase = true) -> conversationTitle
+            !rawTitle.isNullOrBlank() && !rawTitle.equals("WhatsApp", ignoreCase = true) -> rawTitle
+            !bigTitle.isNullOrBlank() && !bigTitle.equals("WhatsApp", ignoreCase = true) -> bigTitle
+            !subText.isNullOrBlank() && !subText.equals("WhatsApp", ignoreCase = true) -> subText
+            else -> "Contacto Desconocido"
         }
 
-        val sender = when {
-            !messageSender.isNullOrBlank() -> messageSender
-            !conversationTitle.isNullOrBlank() -> conversationTitle
-            !rawTitle.isNullOrBlank() && rawTitle != "WhatsApp" -> rawTitle
-            !subText.isNullOrBlank() -> subText
-            else -> rawTitle ?: "Contacto de WhatsApp"
+        val phonePattern = Regex("""^(\+?\d[\d\s\-()]{6,}\d)""")
+        val isPhone = phonePattern.containsMatchIn(candidateSender) || candidateSender.startsWith("+")
+        val isUnregistered = isPhone ||
+                candidateSender.startsWith("~") ||
+                candidateSender.contains("desconocido", ignoreCase = true) ||
+                (candidateSender.count { it.isDigit() } >= 6)
+
+        val sender = if (isUnregistered && !candidateSender.startsWith("[No Registrado]")) {
+            "[No Registrado] $candidateSender"
+        } else {
+            candidateSender
         }
 
         val appName = when {
@@ -264,11 +274,12 @@ class NotificationMonitorService : NotificationListenerService() {
             "urgente", "deposito", "depósito", "transferencia", "dinero", "banco",
             "tarjeta", "ganaste", "premio", "cuenta bloqueada", "mama", "mamá",
             "papa", "papá", "hijo", "ayuda", "familiar", "codigo", "código",
-            "verificacion", "verificación", "nip", "clave", "emergencia", "prestamo", "préstamo"
+            "verificacion", "verificación", "nip", "clave", "emergencia", "prestamo", "préstamo",
+            "bloqueo", "soporte", "contraseña", "banca móvil", "banca movil"
         )
-        val containsFraudKeyword = fraudKeywords.any { combinedContent.contains(it, ignoreCase = true) }
-        val isUnknownSender = sender.startsWith("+") || sender.contains("desconocido", ignoreCase = true)
-        val suspiciousContext = containsFraudKeyword || isUnknownSender
+        val matchedFraudKeywords = fraudKeywords.filter { combinedContent.contains(it, ignoreCase = true) }
+        val containsFraudKeyword = matchedFraudKeywords.isNotEmpty()
+        val suspiciousContext = containsFraudKeyword || isUnregistered
 
         val vClassifier = visionClassifier ?: VisionClassifier(applicationContext).also { visionClassifier = it }
         val aClassifier = audioClassifier ?: AudioClassifier(applicationContext).also { audioClassifier = it }
@@ -279,6 +290,7 @@ class NotificationMonitorService : NotificationListenerService() {
         val displayText: String
         var cachedFace: Bitmap? = null
         var cachedAudio: Bitmap? = null
+        var computedFusionResult: FusionResult? = null
 
         var isFaceDetected = true
 
@@ -314,6 +326,8 @@ class NotificationMonitorService : NotificationListenerService() {
                     "Fotografía recibida (Descarte automático: Sin rostro humano)"
                 } else if (containsFraudKeyword) {
                     "Fotografía sospechosa (Alerta: Posible FaceSwap)"
+                } else if (isUnregistered) {
+                    "Fotografía recibida de número no registrado"
                 } else {
                     "Fotografía entrante recibida"
                 }
@@ -342,6 +356,8 @@ class NotificationMonitorService : NotificationListenerService() {
                 visionProb = null
                 displayText = if (containsFraudKeyword) {
                     "Nota de voz sospechosa (Posible clonación / Deepfake)"
+                } else if (isUnregistered) {
+                    "Nota de voz entrante de número no registrado"
                 } else {
                     "Nota de voz entrante recibida"
                 }
@@ -390,14 +406,57 @@ class NotificationMonitorService : NotificationListenerService() {
                 }
                 displayText = if (containsFraudKeyword) {
                     "Video sospechoso con posible alteración audiovisual"
+                } else if (isUnregistered) {
+                    "Video recibido de número no registrado"
                 } else {
                     "Video entrante recibido"
                 }
             }
+            isTextRelated -> {
+                mediaType = MediaType.UNKNOWN
+                audioProb = null
+                visionProb = null
+                val textSnippet = if (combinedContent.length > 70) combinedContent.take(67) + "..." else combinedContent
+                
+                val globalScore: Float
+                val summaryDesc: String
+                if (isUnregistered && containsFraudKeyword) {
+                    globalScore = 95.0f
+                    summaryDesc = "Alerta crítica: Mensaje de número no registrado con términos de alta urgencia/fraude ('${matchedFraudKeywords.joinToString(", ")}')."
+                    displayText = "Texto sospechoso (No Registrado): \"$textSnippet\""
+                } else if (containsFraudKeyword) {
+                    globalScore = 78.0f
+                    summaryDesc = "Advertencia: Mensaje con palabras clave de solicitud financiera urgente ('${matchedFraudKeywords.joinToString(", ")}')."
+                    displayText = "Texto sospechoso: \"$textSnippet\""
+                } else if (isUnregistered) {
+                    globalScore = 22.0f
+                    summaryDesc = "Mensaje entrante de contacto no registrado en agenda. No se detectan patrones de fraude."
+                    displayText = "Mensaje de texto: \"$textSnippet\""
+                } else {
+                    globalScore = 4.0f
+                    summaryDesc = "Mensaje conversacional auténtico de contacto verificado."
+                    displayText = "Mensaje de texto: \"$textSnippet\""
+                }
+
+                val rLevel = when {
+                    globalScore >= 70f -> RiskLevel.ALTO
+                    globalScore >= 35f -> RiskLevel.MEDIO
+                    else -> RiskLevel.BAJO
+                }
+                computedFusionResult = FusionResult(
+                    globalRiskPercentage = globalScore,
+                    audioFraudProb = 0.0f,
+                    visionFraudProb = 0.0f,
+                    riskLevel = rLevel,
+                    weightAudio = 0.5f,
+                    weightVision = 0.5f,
+                    diagnosticSummary = summaryDesc
+                )
+            }
             else -> return
         }
 
-        val fusionResult = RiskScorer.calculateGlobalRisk(
+        val fusionResult = computedFusionResult ?: RiskScorer.calculateGlobalRisk(
             audioProb = audioProb, 
             visionProb = visionProb, 
             isFaceDetected = isFaceDetected
@@ -424,7 +483,7 @@ class NotificationMonitorService : NotificationListenerService() {
         )
 
         NotificationRepository.addNotification(item)
-        Log.i(TAG, "Notificacion procesada por TFLite: [$appName] $sender: $displayText (Riesgo evaluado: ${fusionResult.globalRiskPercentage}%)")
+        Log.i(TAG, "Notificacion procesada exitosamente: [$appName] $sender: $displayText (Riesgo evaluado: ${fusionResult.globalRiskPercentage}%)")
     }
 
     private fun extractPictureFromNotification(

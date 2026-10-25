@@ -963,9 +963,9 @@ fun NotificationsView(
 
     val (statusLabel, statusColor) = when {
         !isPermissionGranted -> Pair("PERMISO REQUERIDO", RiskHighRed)
-        !isServiceConnected -> Pair("DESVINCULADO POR EL SO", Color(0xFFEAB308))
         !isMonitoringActive -> Pair("MONITOREO EN PAUSA", Color(0xFF94A3B8))
-        else -> Pair("ACTIVO Y ESCUCHANDO", RiskLowGreen)
+        isServiceConnected -> Pair("ACTIVO Y ESCUCHANDO", RiskLowGreen)
+        else -> Pair("LISTO PARA INTERCEPTAR", AccentCyan)
     }
 
     Column(
@@ -1327,6 +1327,48 @@ fun NotificationsView(
                     Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Simular Video Multimodal Auténtico (Inferencia TFLite)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
+                            MediaType.UNKNOWN,
+                            true,
+                            "[No Registrado] +591 71234567",
+                            "Hola mamá, perdí mi celular, este es mi nuevo número. Por favor hazme una transferencia urgente de $500 para mi pasaje."
+                        )
+                        Toast.makeText(context, "Texto sospechoso de número no registrado interceptado", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB91C1C)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Texto Extorsión: No Registrado (+591)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
+                            MediaType.UNKNOWN,
+                            false,
+                            "Andrés Compañero",
+                            "Hola, te envío los apuntes de la clase de compiladores cuando llegue a casa."
+                        )
+                        Toast.makeText(context, "Mensaje de texto legítimo recibido de contacto registrado", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Texto Auténtico: Contacto Registrado", fontSize = 12.sp, color = Color.White)
                 }
             }
         }

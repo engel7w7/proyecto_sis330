@@ -394,7 +394,26 @@ class MainActivity : ComponentActivity() {
                 else -> Pair(null, null)
             }
 
-            val fusion = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+            val fusion = if (mediaType == MediaType.UNKNOWN) {
+                val score = if (isThreat) 95f else 4f
+                val rLevel = if (isThreat) com.detectorpreventor.app.domain.RiskLevel.ALTO else com.detectorpreventor.app.domain.RiskLevel.BAJO
+                val desc = if (isThreat) {
+                    "Alerta crítica: Mensaje de número no registrado con patrones de urgencia/fraude."
+                } else {
+                    "Mensaje conversacional auténtico verificado."
+                }
+                com.detectorpreventor.app.domain.FusionResult(
+                    globalRiskPercentage = score,
+                    audioFraudProb = 0f,
+                    visionFraudProb = 0f,
+                    riskLevel = rLevel,
+                    weightAudio = 0.5f,
+                    weightVision = 0.5f,
+                    diagnosticSummary = desc
+                )
+            } else {
+                RiskScorer.calculateGlobalRisk(audioProb, visionProb)
+            }
             val notif = InterceptedNotification(
                 id = UUID.randomUUID().toString(),
                 appName = "WhatsApp",

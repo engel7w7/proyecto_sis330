@@ -3,51 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Defensa de Proyecto SIS-330: Detector Movil Multimodal de Estafas Digitales</title>
+    <title>Defensa de Proyecto SIS-330 | Detector Movil Multimodal de Estafas Digitales</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-canvas: #090E17;
-            --bg-surface: #101826;
-            --bg-card: #152033;
-            --bg-card-hover: #1A2840;
-            --border-subtle: #1E2D47;
-            --border-light: #2A3C5C;
-            --border-accent: #3B82F6;
+            /* TEMA OSCURO MINIMALISTA ELEGANTE (SIN RECUADROS PESADOS) */
+            --bg-main: #0B0F19;
+            --bg-elevated: rgba(255, 255, 255, 0.03);
+            --line-subtle: rgba(255, 255, 255, 0.08);
+            --line-focus: #3B82F6;
             
-            --primary: #2563EB;
-            --primary-light: #3B82F6;
-            --primary-soft: rgba(37, 99, 235, 0.12);
-            
-            --gold: #D97706;
-            --gold-light: #F59E0B;
-            --gold-soft: rgba(217, 119, 6, 0.12);
-            
-            --success: #059669;
-            --success-light: #10B981;
-            --success-soft: rgba(5, 150, 105, 0.12);
-            
-            --danger: #DC2626;
-            --danger-light: #EF4444;
-            --danger-soft: rgba(220, 38, 38, 0.12);
-            
-            --text-title: #FFFFFF;
-            --text-body: #E2E8F0;
+            --text-primary: #FFFFFF;
             --text-secondary: #94A3B8;
             --text-muted: #64748B;
             
-            --font-display: 'Outfit', sans-serif;
-            --font-sans: 'Inter', sans-serif;
+            --accent-blue: #3B82F6;
+            --accent-amber: #F59E0B;
+            --accent-green: #10B981;
+            --accent-red: #EF4444;
+            
+            --font-title: 'Space Grotesk', sans-serif;
+            --font-body: 'Plus Jakarta Sans', sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        /* TEMA CLARO EDITORIAL ACADEMICO */
+        body.theme-light {
+            --bg-main: #F8FAFC;
+            --bg-elevated: rgba(0, 0, 0, 0.02);
+            --line-subtle: rgba(0, 0, 0, 0.08);
+            --line-focus: #1D4ED8;
             
-            --radius-sm: 6px;
-            --radius-md: 10px;
-            --radius-lg: 14px;
-            --radius-xl: 18px;
+            --text-primary: #0F172A;
+            --text-secondary: #475569;
+            --text-muted: #94A3B8;
             
-            --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.35);
+            --accent-blue: #1D4ED8;
+            --accent-amber: #D97706;
+            --accent-green: #059669;
+            --accent-red: #DC2626;
         }
 
         * {
@@ -57,917 +53,611 @@
         }
 
         body {
-            background-color: var(--bg-canvas);
-            color: var(--text-body);
-            font-family: var(--font-sans);
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: var(--font-body);
             height: 100vh;
             width: 100vw;
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
+            line-height: 1.6;
+            transition: background-color 0.2s ease, color 0.2s ease;
         }
 
-        /* HEADER DE CONTROL SUPERIOR */
-        header.pres-header {
-            height: 54px;
-            background: var(--bg-surface);
-            border-bottom: 1px solid var(--border-subtle);
+        /* BARRA SUPERIOR DISCRETA */
+        header.nav-header {
+            height: 52px;
+            padding: 0 32px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 24px;
+            border-bottom: 1px solid var(--line-subtle);
             flex-shrink: 0;
-            z-index: 100;
+            font-size: 0.85rem;
         }
 
-        .header-meta {
+        .nav-brand {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
         }
 
-        .badge-academic {
-            background: var(--primary-soft);
-            color: var(--primary-light);
-            border: 1px solid rgba(59, 130, 246, 0.35);
-            padding: 3px 10px;
-            border-radius: var(--radius-sm);
+        .badge-tag {
+            color: var(--accent-blue);
+            font-family: var(--font-mono);
             font-size: 0.75rem;
             font-weight: 700;
             letter-spacing: 0.5px;
             text-transform: uppercase;
         }
 
-        .header-project-name {
-            font-size: 0.88rem;
-            font-weight: 600;
-            color: var(--text-secondary);
-        }
-
-        .header-controls {
+        .nav-actions {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
-        .btn-ctrl {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
+        .btn-action {
+            background: transparent;
+            border: 1px solid var(--line-subtle);
             color: var(--text-secondary);
             padding: 5px 12px;
-            border-radius: var(--radius-sm);
+            border-radius: 6px;
             font-size: 0.78rem;
             font-weight: 600;
             cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
             transition: all 0.15s ease;
-            font-family: var(--font-sans);
+            font-family: var(--font-body);
         }
 
-        .btn-ctrl:hover {
-            background: var(--border-subtle);
-            color: var(--text-title);
-            border-color: var(--border-light);
+        .btn-action:hover {
+            color: var(--text-primary);
+            border-color: var(--line-focus);
         }
 
-        .btn-ctrl.active {
-            background: var(--primary);
-            color: #FFFFFF;
-            border-color: var(--primary-light);
-        }
-
-        .timer-display {
+        .timer-box {
             font-family: var(--font-mono);
             font-size: 0.85rem;
-            color: var(--gold-light);
-            background: var(--gold-soft);
-            border: 1px solid rgba(217, 119, 6, 0.3);
-            padding: 4px 10px;
-            border-radius: var(--radius-sm);
+            color: var(--accent-amber);
             font-weight: 600;
+            padding: 0 8px;
         }
 
-        /* AREA PRINCIPAL DE DIAPOSITIVAS */
-        main.presentation-stage {
+        /* CONTENEDOR DE DIAPOSITIVAS */
+        main.deck-viewport {
             flex: 1;
             position: relative;
-            overflow: hidden;
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 20px 30px;
+            justify-content: center;
+            padding: 40px 60px;
         }
 
-        .slide-container {
+        .slide-deck {
             width: 100%;
             height: 100%;
-            max-width: 1400px;
-            max-height: 840px;
+            max-width: 1320px;
+            max-height: 800px;
             position: relative;
         }
 
-        .slide-panel {
+        .slide-view {
             position: absolute;
             inset: 0;
             display: none;
             flex-direction: column;
-            background: var(--bg-surface);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-xl);
-            padding: 34px 44px;
-            box-shadow: var(--shadow-card);
+            justify-content: space-between;
+            opacity: 0;
+            transition: opacity 0.2s ease;
             overflow-y: auto;
-            animation: fadeInSlide 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        .slide-panel.active {
+        .slide-view.active {
             display: flex;
+            opacity: 1;
         }
 
-        @keyframes fadeInSlide {
-            from {
-                opacity: 0;
-                transform: scale(0.992) translateY(6px);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1) translateY(0);
-            }
-        }
-
-        /* HEADER DE DIAPOSITIVA */
-        .slide-header {
+        /* TIPOGRAFIA Y JERARQUIA DE DIAPOSITIVA */
+        .slide-top-meta {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 22px;
-            padding-bottom: 14px;
-            border-bottom: 1px solid var(--border-subtle);
-            flex-shrink: 0;
+            align-items: baseline;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--line-subtle);
+            padding-bottom: 12px;
         }
 
-        .slide-title-group {
+        .slide-category {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+        }
+
+        .slide-index {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .slide-title-block {
+            margin-bottom: 28px;
+        }
+
+        .slide-main-title {
+            font-family: var(--font-title);
+            font-size: 2.25rem;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: -0.5px;
+            color: var(--text-primary);
+        }
+
+        .slide-subtitle {
+            font-size: 1.05rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            font-weight: 400;
+            max-width: 900px;
+        }
+
+        /* CONTENIDO INTERNO SIN RECUADROS PESADOS */
+        .slide-content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        /* LAYOUTS LIMPIOS (COLUMNAS ABIERTAS) */
+        .layout-columns-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 48px;
+            align-items: center;
+        }
+
+        .layout-columns-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 36px;
+            align-items: start;
+        }
+
+        .layout-media-text {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 44px;
+            align-items: center;
+        }
+
+        /* ELEMENTOS TIPOGRAFICOS EDITORIALES */
+        .point-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .point-number {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .point-title {
+            font-family: var(--font-title);
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.3;
+        }
+
+        .point-desc {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .quote-statement {
+            border-left: 3px solid var(--accent-blue);
+            padding-left: 20px;
+            font-size: 1.15rem;
+            color: var(--text-primary);
+            font-weight: 500;
+            line-height: 1.6;
+            margin: 16px 0;
+        }
+
+        /* METRICAS GRANDES LIMPIAS */
+        .metrics-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid var(--line-subtle);
+        }
+
+        .metric-block {
             display: flex;
             flex-direction: column;
             gap: 4px;
         }
 
-        .slide-category {
-            font-size: 0.75rem;
+        .metric-value {
+            font-family: var(--font-title);
+            font-size: 2.8rem;
             font-weight: 700;
-            color: var(--primary-light);
+            color: var(--text-primary);
+            line-height: 1;
+            letter-spacing: -1px;
+        }
+
+        .metric-value.accent { color: var(--accent-blue); }
+        .metric-value.amber { color: var(--accent-amber); }
+        .metric-value.green { color: var(--accent-green); }
+
+        .metric-label {
+            font-size: 0.82rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            font-family: var(--font-display);
-        }
-
-        .slide-heading {
-            font-family: var(--font-display);
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--text-title);
-            line-height: 1.25;
-        }
-
-        .slide-subheading {
-            font-size: 0.92rem;
-            color: var(--text-secondary);
-            font-weight: 400;
-        }
-
-        .slide-badge-num {
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            padding: 4px 12px;
-            border-radius: var(--radius-sm);
-            font-weight: 600;
-        }
-
-        /* CUERPO DE DIAPOSITIVA */
-        .slide-body {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        /* GRILLAS Y CONTENEDORES */
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            height: 100%;
-        }
-
-        .grid-3 {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
-        }
-
-        .grid-4 {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-        }
-
-        .grid-2-1 {
-            display: grid;
-            grid-template-columns: 1.4fr 1fr;
-            gap: 24px;
-        }
-
-        .grid-1-2 {
-            display: grid;
-            grid-template-columns: 1fr 1.4fr;
-            gap: 24px;
-        }
-
-        /* TARJETAS DE CONTENIDO */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: 22px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            transition: border-color 0.15s ease;
-        }
-
-        .card:hover {
-            border-color: var(--border-light);
-        }
-
-        .card-header-line {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .card-title {
-            font-family: var(--font-display);
-            font-size: 1.05rem;
-            font-weight: 700;
-            color: var(--text-title);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .card-pill {
-            font-size: 0.7rem;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: var(--radius-sm);
-            text-transform: uppercase;
-            font-family: var(--font-mono);
-        }
-
-        .pill-blue { background: var(--primary-soft); color: var(--primary-light); border: 1px solid rgba(59, 130, 246, 0.3); }
-        .pill-gold { background: var(--gold-soft); color: var(--gold-light); border: 1px solid rgba(217, 119, 6, 0.3); }
-        .pill-green { background: var(--success-soft); color: var(--success-light); border: 1px solid rgba(5, 150, 105, 0.3); }
-        .pill-red { background: var(--danger-soft); color: var(--danger-light); border: 1px solid rgba(220, 38, 38, 0.3); }
-
-        .card p {
-            font-size: 0.88rem;
-            color: var(--text-secondary);
-            line-height: 1.5;
-        }
-
-        .feature-list {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .feature-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            font-size: 0.86rem;
-            color: var(--text-body);
-        }
-
-        .feature-bullet {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--primary-light);
-            margin-top: 7px;
-            flex-shrink: 0;
-        }
-
-        .feature-bullet.gold { background: var(--gold-light); }
-        .feature-bullet.green { background: var(--success-light); }
-        .feature-bullet.red { background: var(--danger-light); }
-
-        /* LLAMADOS DESTACADOS (CALLOUTS) */
-        .callout-box {
-            background: var(--bg-surface);
-            border-left: 4px solid var(--primary);
-            border-radius: var(--radius-sm);
-            padding: 14px 18px;
-            font-size: 0.88rem;
-            color: var(--text-body);
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .callout-box.gold {
-            border-left-color: var(--gold);
-            background: rgba(217, 119, 6, 0.05);
-        }
-
-        .callout-box.green {
-            border-left-color: var(--success);
-            background: rgba(5, 150, 105, 0.05);
-        }
-
-        .callout-title {
-            font-weight: 700;
-            color: var(--text-title);
-            font-size: 0.92rem;
-            font-family: var(--font-display);
-        }
-
-        /* METRICAS Y NUMEROS */
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 14px;
-        }
-
-        .stat-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 16px;
-            text-align: center;
-        }
-
-        .stat-number {
-            font-family: var(--font-mono);
-            font-size: 1.85rem;
-            font-weight: 700;
-            color: var(--primary-light);
-            line-height: 1.15;
-        }
-
-        .stat-number.gold { color: var(--gold-light); }
-        .stat-number.green { color: var(--success-light); }
-
-        .stat-label {
-            font-size: 0.74rem;
+            letter-spacing: 0.8px;
             color: var(--text-secondary);
             font-weight: 600;
-            text-transform: uppercase;
-            margin-top: 6px;
-            letter-spacing: 0.5px;
         }
 
-        .stat-subtext {
-            font-size: 0.72rem;
+        .metric-sub {
+            font-size: 0.8rem;
             color: var(--text-muted);
-            margin-top: 2px;
         }
 
-        /* TABLAS ELEGANTES */
-        .academic-table {
+        /* TABLA MINIMALISTA SIN BORDES PESADOS */
+        .minimal-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.84rem;
+            font-size: 0.9rem;
             text-align: left;
         }
 
-        .academic-table th {
-            background: var(--bg-surface);
-            color: var(--text-title);
-            font-weight: 700;
-            padding: 10px 14px;
-            border-bottom: 2px solid var(--border-light);
-            font-family: var(--font-display);
-            font-size: 0.82rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .academic-table td {
-            padding: 10px 14px;
-            border-bottom: 1px solid var(--border-subtle);
-            color: var(--text-body);
-        }
-
-        .academic-table tr:hover td {
-            background: rgba(255, 255, 255, 0.02);
-        }
-
-        .academic-table td.mono {
+        .minimal-table th {
+            color: var(--text-muted);
             font-family: var(--font-mono);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--line-subtle);
             font-weight: 600;
         }
 
-        /* IMAGENES / CAPTURAS REALES */
-        .figure-wrapper {
-            background: #06090F;
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 8px;
+        .minimal-table td {
+            padding: 14px 0;
+            border-bottom: 1px solid var(--line-subtle);
+            color: var(--text-primary);
+        }
+
+        .minimal-table td.mono {
+            font-family: var(--font-mono);
+            font-size: 0.88rem;
+        }
+
+        /* CONTENEDOR DE IMAGEN LIMPIO (FULL VISIBILITY) */
+        .media-clean-frame {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            width: 100%;
             height: 100%;
-            overflow: hidden;
         }
 
-        .figure-wrapper img {
+        .media-clean-frame img {
             max-width: 100%;
-            max-height: 380px;
+            max-height: 440px;
             object-fit: contain;
-            border-radius: var(--radius-sm);
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
         }
 
-        .figure-caption {
-            font-size: 0.72rem;
+        .media-caption {
+            font-size: 0.78rem;
             color: var(--text-muted);
-            text-align: center;
-            margin-top: 6px;
             font-family: var(--font-mono);
+            margin-top: 10px;
+            text-align: center;
         }
 
-        /* FOOTER DE CONTROL Y NAVEGACION INFERIOR */
-        footer.pres-footer {
-            height: 52px;
-            background: var(--bg-surface);
-            border-top: 1px solid var(--border-subtle);
+        /* FOOTER DE CONTROL INFERIOR */
+        footer.nav-footer {
+            height: 54px;
+            padding: 0 32px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 24px;
+            border-top: 1px solid var(--line-subtle);
             flex-shrink: 0;
-            z-index: 100;
         }
 
-        .nav-progress-dots {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .dot-btn {
-            width: 28px;
-            height: 28px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border-subtle);
-            background: var(--bg-card);
-            color: var(--text-muted);
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.15s ease;
-        }
-
-        .dot-btn:hover {
-            border-color: var(--border-light);
-            color: var(--text-title);
-        }
-
-        .dot-btn.active {
-            background: var(--primary);
-            color: #FFFFFF;
-            border-color: var(--primary-light);
-            box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
-        }
-
-        .nav-buttons-group {
+        .progress-indicator {
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        .btn-nav {
-            background: var(--primary);
-            border: 1px solid var(--primary-light);
+        .step-pill {
+            width: 32px;
+            height: 4px;
+            background: var(--line-subtle);
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .step-pill.active {
+            background: var(--accent-blue);
+            width: 48px;
+        }
+
+        .nav-buttons {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn-nav-primary {
+            background: var(--accent-blue);
             color: #FFFFFF;
-            padding: 6px 16px;
-            border-radius: var(--radius-sm);
+            border: none;
+            padding: 7px 18px;
+            border-radius: 6px;
             font-size: 0.82rem;
             font-weight: 600;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.15s ease;
+            transition: opacity 0.15s ease;
+            font-family: var(--font-body);
         }
 
-        .btn-nav:hover {
-            background: #1D4ED8;
+        .btn-nav-primary:hover {
+            opacity: 0.9;
         }
 
-        .btn-nav.secondary {
-            background: var(--bg-card);
-            border-color: var(--border-subtle);
-            color: var(--text-body);
+        .btn-nav-secondary {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--line-subtle);
+            padding: 7px 16px;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: var(--font-body);
         }
 
-        .btn-nav.secondary:hover {
-            background: var(--border-subtle);
-            border-color: var(--border-light);
+        .btn-nav-secondary:hover {
+            color: var(--text-primary);
+            border-color: var(--line-focus);
         }
 
-        /* PANEL DE NOTAS DEL ORADOR (DRAWER INFERIOR/LATERAL) */
-        .notes-drawer {
+        /* NOTAS DEL ORADOR FLOTANTES */
+        .notes-panel {
             position: fixed;
-            bottom: 52px;
+            bottom: 54px;
             left: 0;
             right: 0;
-            background: #0B1320;
-            border-top: 2px solid var(--gold);
-            padding: 16px 28px;
+            background: var(--bg-main);
+            border-top: 1px solid var(--accent-amber);
+            padding: 20px 36px;
             display: none;
-            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.6);
-            z-index: 200;
-            max-height: 220px;
+            z-index: 50;
+            max-height: 200px;
             overflow-y: auto;
+            box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.4);
         }
 
-        .notes-drawer.open {
+        .notes-panel.open {
             display: block;
-            animation: slideUpNotes 0.2s ease forwards;
-        }
-
-        @keyframes slideUpNotes {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-
-        .notes-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
         }
 
         .notes-title {
-            font-family: var(--font-display);
-            font-size: 0.82rem;
-            font-weight: 700;
-            color: var(--gold-light);
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--accent-amber);
             text-transform: uppercase;
             letter-spacing: 1px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            font-weight: 700;
+            margin-bottom: 6px;
         }
 
-        .notes-content {
+        .notes-text {
             font-size: 0.92rem;
-            color: #E2E8F0;
+            color: var(--text-primary);
             line-height: 1.6;
         }
 
-        /* MODAL DE ATAJOS DE TECLADO */
-        .shortcuts-modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.75);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 300;
-        }
-
-        .shortcuts-modal.open {
-            display: flex;
-        }
-
-        .shortcuts-card {
-            background: var(--bg-surface);
-            border: 1px solid var(--border-light);
-            border-radius: var(--radius-lg);
-            width: 440px;
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .kbd-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.85rem;
-            color: var(--text-body);
-        }
-
-        kbd {
-            background: var(--bg-card);
-            border: 1px solid var(--border-subtle);
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-family: var(--font-mono);
-            font-size: 0.78rem;
-            color: var(--text-title);
-        }
-
-        /* MODO IMPRESION / EXPORTAR A PDF (Ctrl+P) */
+        /* MODO IMPRESION LIMPIO (Ctrl+P) */
         @media print {
             body {
                 background: #FFFFFF !important;
-                color: #000000 !important;
-                height: auto !important;
+                color: #0F172A !important;
                 overflow: visible !important;
             }
 
-            header.pres-header,
-            footer.pres-footer,
-            .notes-drawer,
-            .shortcuts-modal {
+            header.nav-header, footer.nav-footer, .notes-panel {
                 display: none !important;
             }
 
-            main.presentation-stage {
+            main.deck-viewport {
                 padding: 0 !important;
                 display: block !important;
-                height: auto !important;
             }
 
-            .slide-container {
-                max-width: 100% !important;
-                max-height: none !important;
-                height: auto !important;
-            }
-
-            .slide-panel {
+            .slide-view {
                 position: relative !important;
                 display: flex !important;
+                opacity: 1 !important;
                 page-break-after: always !important;
                 break-after: page !important;
                 height: 100vh !important;
-                border: none !important;
-                border-bottom: 2px solid #CBD5E1 !important;
-                box-shadow: none !important;
-                background: #FFFFFF !important;
-                color: #0F172A !important;
-                padding: 40px !important;
+                padding: 48px !important;
+                border-bottom: 1px solid #CBD5E1 !important;
             }
 
-            .slide-heading, .card-title, .callout-title {
-                color: #0F172A !important;
-            }
-
-            .card {
-                background: #F8FAFC !important;
-                border: 1px solid #E2E8F0 !important;
-                color: #1E293B !important;
-            }
-
-            .card p, .feature-item, .slide-subheading {
-                color: #334155 !important;
-            }
-
-            .academic-table th {
-                background: #F1F5F9 !important;
-                color: #0F172A !important;
-            }
-
-            .academic-table td {
-                color: #1E293B !important;
-                border-bottom-color: #E2E8F0 !important;
-            }
+            .slide-main-title { color: #0F172A !important; }
+            .point-desc, .slide-subtitle { color: #334155 !important; }
+            .minimal-table th { color: #64748B !important; }
+            .minimal-table td { color: #0F172A !important; }
         }
     </style>
 </head>
 <body>
 
-    <!-- HEADER SUPERIOR DE CONTROL -->
-    <header class="pres-header">
-        <div class="header-meta">
-            <span class="badge-academic">SIS 330</span>
-            <span class="header-project-name">Detector Móvil Multimodal de Estafas Digitales (Edge AI)</span>
+    <!-- BARRA SUPERIOR -->
+    <header class="nav-header">
+        <div class="nav-brand">
+            <span class="badge-tag">SIS 330</span>
+            <span>Universidad San Francisco Xavier · Carrera de Computación</span>
         </div>
-        <div class="header-controls">
-            <div id="timerDisplay" class="timer-display">00:00</div>
-            <button id="btnTimerToggle" class="btn-ctrl" title="Iniciar / Pausar Cronómetro">Iniciar</button>
-            <button id="btnNotesToggle" class="btn-ctrl" title="Ver Notas del Orador (Tecla N)">Notas [N]</button>
-            <button id="btnShortcuts" class="btn-ctrl" title="Atajos de Teclado">Atajos [?]</button>
-            <button id="btnFullscreen" class="btn-ctrl" title="Pantalla Completa (Tecla F)">Pantalla Completa [F]</button>
+        <div class="nav-actions">
+            <div id="timerDisplay" class="timer-box">00:00</div>
+            <button id="btnTimer" class="btn-action">Iniciar</button>
+            <button id="btnThemeToggle" class="btn-action">Modo Claro / Oscuro</button>
+            <button id="btnNotes" class="btn-action">Notas [N]</button>
+            <button id="btnFullscreen" class="btn-action">Pantalla Completa [F]</button>
         </div>
     </header>
 
-    <!-- ESCENARIO DE DIAPOSITIVAS (EXACTAMENTE 10 DIAPOSITIVAS) -->
-    <main class="presentation-stage">
-        <div class="slide-container">
+    <!-- ESCENARIO DE DIAPOSITIVAS (EXACTAMENTE 10) -->
+    <main class="deck-viewport">
+        <div class="slide-deck">
 
             <!-- DIAPOSITIVA 1: PORTADA INSTITUCIONAL -->
-            <section class="slide-panel active" id="slide-1" 
-                data-notes="Saludo formal al docente Ing. Carlos Walter Pacheco Lora y compañeros. Presentación formal del proyecto SIS 330. Destacar que este trabajo resuelve el problema crítico de la ciberextorsión y fraudes audiovisuales ejecutando inteligencia artificial directamente en el dispositivo móvil sin enviar datos a internet.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Universidad Mayor, Real y Pontificia de San Francisco Xavier de Chuquisaca</span>
-                        <h1 class="slide-heading" style="font-size: 2rem;">Detector Móvil Multimodal de Estafas Digitales mediante IA Explicable (XAI) y Procesamiento en el Borde (Edge AI)</h1>
-                        <p class="slide-subheading">Facultad de Ciencias y Tecnología · Carrera de Ingeniería en Ciencias de la Computación</p>
-                    </div>
-                    <span class="slide-badge-num">01 / 10</span>
+            <section class="slide-view active" id="slide-1"
+                data-notes="Saludo formal al docente Ing. Carlos Walter Pacheco Lora y compañeros. Presentación formal del proyecto de SIS 330: Detector Móvil Multimodal de Estafas Digitales. Resaltar desde el inicio que es una aplicación en Android que ejecuta Inteligencia Artificial directamente en el celular, sin enviar ningún archivo a internet para proteger la privacidad.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Defensa de Proyecto de Grado · SIS 330</span>
+                    <span class="slide-index">01 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2-1" style="align-items: stretch;">
-                        <div class="card" style="justify-content: center; gap: 18px; padding: 28px;">
-                            <div class="callout-box">
-                                <span class="callout-title">Propósito General del Proyecto</span>
-                                <p style="font-size: 0.95rem; color: var(--text-body);">
-                                    Desarrollo y despliegue de una aplicación móvil nativa en <strong>Android</strong> capaz de interceptar, analizar y clasificar en tiempo real notas de voz, imágenes y videos manipulados mediante Inteligencia Artificial Generativa (Deepfakes y Clonación de Voz), ejecutando modelos neuronales cuantizados a <strong>INT8</strong> 100% en el dispositivo con respaldo explicable (XAI Grad-CAM).
-                                </p>
-                            </div>
+                <div class="slide-content-area">
+                    <div style="max-width: 980px;">
+                        <h1 class="slide-main-title" style="font-size: 2.7rem; margin-bottom: 16px;">
+                            Detector Móvil Multimodal de Estafas Digitales mediante IA Explicable (XAI) y Edge AI
+                        </h1>
+                        <p class="slide-subtitle" style="font-size: 1.2rem; line-height: 1.6;">
+                            Escudo biométrico preventivo en tiempo real para Android: clasificación de clonación de voz y deepfakes audiovisuales con modelos neuronales cuantizados a INT8 en el dispositivo.
+                        </p>
+                    </div>
 
-                            <div class="stat-grid" style="margin-top: 6px;">
-                                <div class="stat-card">
-                                    <div class="stat-number">100%</div>
-                                    <div class="stat-label">En el Borde (Edge AI)</div>
-                                    <div class="stat-subtext">Sin servidores externos</div>
-                                </div>
-                                <div class="stat-card">
-                                    <div class="stat-number green">&lt; 45 ms</div>
-                                    <div class="stat-label">Latencia Inferencia</div>
-                                    <div class="stat-subtext">Respuesta instantánea</div>
-                                </div>
-                                <div class="stat-card">
-                                    <div class="stat-number gold">97.4%</div>
-                                    <div class="stat-label">Precisión Multimodal</div>
-                                    <div class="stat-subtext">Audio + Visión Fused</div>
-                                </div>
-                            </div>
+                    <div class="metrics-strip" style="margin-top: 40px;">
+                        <div class="metric-block">
+                            <span class="metric-label">Materia y Docente</span>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">SIS 330 · Ing. Pacheco Lora Carlos Walter</span>
+                            <span class="metric-sub">Desarrollo de Aplicaciones Inteligentes</span>
                         </div>
-
-                        <div class="card" style="background: var(--bg-surface); border-color: var(--border-light); justify-content: center; gap: 16px;">
-                            <div class="card-title" style="color: var(--gold-light); font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                                Ficha Técnica de la Materia
-                            </div>
-                            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 0.88rem;">
-                                <div>
-                                    <span style="color: var(--text-muted); display: block; font-size: 0.74rem; text-transform: uppercase;">Materia</span>
-                                    <strong style="color: var(--text-title);">SIS 330 · Desarrollo de Aplicaciones Inteligentes</strong>
-                                </div>
-                                <div>
-                                    <span style="color: var(--text-muted); display: block; font-size: 0.74rem; text-transform: uppercase;">Docente</span>
-                                    <strong style="color: var(--text-title);">Ing. Pacheco Lora Carlos Walter</strong>
-                                </div>
-                                <div>
-                                    <span style="color: var(--text-muted); display: block; font-size: 0.74rem; text-transform: uppercase;">Universitario</span>
-                                    <strong style="color: var(--primary-light);">Romero Morales Jhojan Erick</strong>
-                                </div>
-                                <div>
-                                    <span style="color: var(--text-muted); display: block; font-size: 0.74rem; text-transform: uppercase;">Gestión Académica</span>
-                                    <span style="color: var(--text-body);">Gestión 2026 · Sucre, Bolivia</span>
-                                </div>
-                            </div>
+                        <div class="metric-block">
+                            <span class="metric-label">Universitario</span>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: var(--accent-blue); margin-top: 4px;">Romero Morales Jhojan Erick</span>
+                            <span class="metric-sub">Carrera de Ingeniería en Ciencias de la Computación</span>
+                        </div>
+                        <div class="metric-block">
+                            <span class="metric-label">Institución y Gestión</span>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">USFX · Facultad de Ciencias y Tecnología</span>
+                            <span class="metric-sub">Gestión 2026 · Sucre, Bolivia</span>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- DIAPOSITIVA 2: EL PROBLEMA Y LA AMENAZA ACTUAL -->
-            <section class="slide-panel" id="slide-2"
-                data-notes="Explicar la motivación del problema: Los ataques ya no son simples correos con faltas de ortografía. Con modelos generativos como VITS, ElevenLabs o FaceSwap, los delincuentes clonan la voz de un hijo o amigo en 3 segundos. Los antivirus tradicionales no sirven porque los archivos no contienen virus, sino engaño biométrico.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Problemática Actual</span>
-                        <h2 class="slide-heading">El Desafío: Fraudes Biométricos y Ciberextorsión Generativa</h2>
-                        <p class="slide-subheading">La proliferación de IA Generativa accesible ha creado una nueva frontera de ataques de ingeniería social.</p>
-                    </div>
-                    <span class="slide-badge-num">02 / 10</span>
+            <!-- DIAPOSITIVA 2: EL PROBLEMA REAL -->
+            <section class="slide-view" id="slide-2"
+                data-notes="Explicar la motivación central: Las estafas digitales en Bolivia han evolucionado de simples mensajes de texto a ataques de suplantación biométrica con Inteligencia Artificial. Con 3 segundos de audio, los estafadores clonan la voz de un familiar para fingir un secuestro exprés o una emergencia médica. Los antivirus no sirven para esto porque no es un virus, es un engaño perceptual.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">El Desafío Actual</span>
+                    <span class="slide-index">02 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-3">
-                        <div class="card">
-                            <div class="card-header-line">
-                                <span class="card-title">Clonación de Voz (Vishing)</span>
-                                <span class="card-pill pill-red">Crítico</span>
-                            </div>
-                            <p>
-                                Con apenas 3 a 5 segundos de audio extraído de redes sociales, modelos de difusión y conversión de voz sintetizan audios que imitan el tono, timbre y cadencia de una persona conocida.
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">La Nueva Frontera de la Ciberextorsión y Fraudes Biométricos</h2>
+                    <p class="slide-subtitle">La Inteligencia Artificial Generativa accesible ha democratizado la creación de audios y videos falsos hiperrealistas.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-columns-3">
+                        <div class="point-item">
+                            <span class="point-number">01 · Audio</span>
+                            <h3 class="point-title">Clonación de Voz Instantánea</h3>
+                            <p class="point-desc">
+                                Con muestras breves de 3 a 5 segundos de redes sociales, herramientas de síntesis neuronal replican el timbre, tono y acento de una persona para simular falsos secuestros y urgencias financieras por WhatsApp.
                             </p>
-                            <ul class="feature-list">
-                                <li class="feature-item"><span class="feature-bullet red"></span>Simulación de secuestros exprés a padres.</li>
-                                <li class="feature-item"><span class="feature-bullet red"></span>Urgencias médicas falsas pidiendo dinero.</li>
-                                <li class="feature-item"><span class="feature-bullet red"></span>Suplantación de autoridades bancarias.</li>
-                            </ul>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header-line">
-                                <span class="card-title">Deepfakes Faciales</span>
-                                <span class="card-pill pill-gold">Visual</span>
-                            </div>
-                            <p>
-                                Reemplazo de identidad facial (FaceSwap) en videos breves e imágenes para aparentar situaciones reales, saltar verificaciones o comprometer reputaciones.
+                        <div class="point-item">
+                            <span class="point-number">02 · Video</span>
+                            <h3 class="point-title">Deepfakes Faciales en Mensajería</h3>
+                            <p class="point-desc">
+                                Manipulación de identidad facial (FaceSwap) en videollamadas y videos cortos donde un familiar o colega aparenta solicitar transferencias bancarias directas, engañando la confianza visual.
                             </p>
-                            <ul class="feature-list">
-                                <li class="feature-item"><span class="feature-bullet gold"></span>Videos manipulados de figuras familiares.</li>
-                                <li class="feature-item"><span class="feature-bullet gold"></span>Fotografías sintéticas generadas con GANs.</li>
-                                <li class="feature-item"><span class="feature-bullet gold"></span>Distorsiones en bordes y mirada artificial.</li>
-                            </ul>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header-line">
-                                <span class="card-title">La Brecha Defensiva</span>
-                                <span class="card-pill pill-blue">Vulnerabilidad</span>
-                            </div>
-                            <p>
-                                Los sistemas de seguridad móvil convencionales están completamente ciegos ante este vector de ataque biométrico.
+                        <div class="point-item">
+                            <span class="point-number">03 · Vulnerabilidad</span>
+                            <h3 class="point-title">La Ineficacia de la Seguridad Actual</h3>
+                            <p class="point-desc">
+                                Los antivirus tradicionales buscan código malicioso y los filtros de spam revisan palabras clave. Ninguno es capaz de someter una señal acústica o un rostro a inferencia neuronal profunda en tiempo real.
                             </p>
-                            <ul class="feature-list">
-                                <li class="feature-item"><span class="feature-bullet"></span>Los antivirus solo buscan firmas de malware.</li>
-                                <li class="feature-item"><span class="feature-bullet"></span>Los filtros de spam solo analizan texto plano.</li>
-                                <li class="feature-item"><span class="feature-bullet"></span>El usuario común no puede distinguir el fraude.</li>
-                            </ul>
                         </div>
                     </div>
 
-                    <div class="callout-box" style="margin-top: 4px;">
-                        <span class="callout-title">Consecuencia Directa en Bolivia y la Región</span>
-                        <p>
-                            Cientos de familias y adultos mayores caen diariamente en estafas por WhatsApp y llamadas de voz porque <em>"escucharon la voz de su hijo o nieto pidiendo auxilio"</em>. Se requiere con urgencia una barrera defensiva inteligente que opere en el propio teléfono del usuario.
-                        </p>
+                    <div class="quote-statement" style="margin-top: 36px;">
+                        "El usuario común en Bolivia no tiene manera de saber si la voz de auxilio que escucha en su celular es de su hijo o de una red neuronal generativa."
                     </div>
                 </div>
             </section>
 
             <!-- DIAPOSITIVA 3: ¿QUE HACE EL SISTEMA? -->
-            <section class="slide-panel" id="slide-3"
-                data-notes="Esta es la respuesta a la pregunta clave de Ing. Pacheco: ¿Qué hace el sistema? Resumir con fuerza: El sistema es un escudo biométrico inteligente que analiza notas de voz, fotos y videos que llegan a tu celular para decirte objetivamente si fueron hechos por una persona real o generados por IA, mostrándote la evidencia con mapas de calor y protegiendo tu privacidad sin salir del teléfono.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Definición Central</span>
-                        <h2 class="slide-heading">¿Qué Hace el Sistema? Propósito y Capacidades</h2>
-                        <p class="slide-subheading">Escudo biométrico móvil inteligente para la detección preventiva de engaño digital en tiempo real.</p>
-                    </div>
-                    <span class="slide-badge-num">03 / 10</span>
+            <section class="slide-view" id="slide-3"
+                data-notes="Esta es la respuesta directa a la primera pregunta clave del Ing. Pacheco: ¿Qué hace el sistema? Resumir con total contundencia: El sistema es un escudo biométrico móvil que inspecciona notas de voz, fotos y videos para decirte con certeza científica si fueron hechos por una persona real o por IA, mostrando la evidencia con mapas de calor y protegiendo tu privacidad sin salir del teléfono.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Propósito del Proyecto</span>
+                    <span class="slide-index">03 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2">
-                        <div class="card" style="gap: 16px;">
-                            <div class="card-title" style="color: var(--primary-light); font-size: 1.15rem;">
-                                Definición Ejecutiva
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">¿Qué Hace el Sistema? Definición y Propósito</h2>
+                    <p class="slide-subtitle">Un perito biométrico inteligente que opera de forma autónoma dentro del smartphone.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-columns-2">
+                        <div>
+                            <div class="quote-statement" style="font-size: 1.25rem;">
+                                Es una aplicación nativa para Android que intercepta y evalúa archivos multimedia para determinar objetivamente si provienen de un ser humano auténtico o fueron generados mediante Inteligencia Artificial.
                             </div>
-                            <p style="font-size: 0.95rem; line-height: 1.6;">
-                                Es una aplicación móvil nativa para Android que actúa como un <strong>perito forense digital en el bolsillo</strong>. Intercepta y analiza archivos multimedia (notas de voz, rostros y videos) para determinar con precisión científica si fueron originados por un ser humano auténtico o sintetizados mediante algoritmos de Inteligencia Artificial.
+                            <p class="point-desc" style="margin-top: 16px;">
+                                A diferencia de soluciones teóricas de laboratorio, el sistema se diseñó para operar en hardware móvil real con bajo consumo de batería, dando un veredicto de riesgo en milisegundos con botones directos para bloquear el contacto malicioso.
                             </p>
-
-                            <div class="callout-box green">
-                                <span class="callout-title" style="color: var(--success-light);">Los 3 Pilares que lo Definen</span>
-                                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px; font-size: 0.86rem;">
-                                    <div><strong>1. Detección Multimodal:</strong> Examina voz (espectrogramas Mel) e imagen (rostros) de forma conjunta o individual.</div>
-                                    <div><strong>2. Procesamiento Edge AI:</strong> Funciona 100% en el procesador del smartphone sin depender de conexión a internet ni enviar datos a la nube.</div>
-                                    <div><strong>3. Inteligencia Artificial Explicable (XAI):</strong> Muestra un mapa de calor Grad-CAM visual que resalta los artefactos de fraude.</div>
-                                </div>
-                            </div>
                         </div>
 
-                        <div class="card" style="gap: 14px; background: var(--bg-surface);">
-                            <div class="card-title" style="color: var(--text-title);">
-                                Flujo Operativo en 3 Pasos
+                        <div style="display: flex; flex-direction: column; gap: 24px;">
+                            <div class="point-item">
+                                <span class="point-number">Pilar 1</span>
+                                <h4 class="point-title">Detección Audiovisual Multimodal</h4>
+                                <p class="point-desc">Examina tanto la señal bioacústica de la voz (espectrogramas Mel) como los rasgos fisonómicos del rostro (keyframes de video y fotos).</p>
                             </div>
 
-                            <div style="display: flex; flex-direction: column; gap: 12px;">
-                                <div style="display: flex; gap: 12px; align-items: flex-start;">
-                                    <div style="background: var(--primary); color: #FFF; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0;">1</div>
-                                    <div>
-                                        <strong style="color: var(--text-title); font-size: 0.9rem;">Recepción o Compartición</strong>
-                                        <p style="font-size: 0.84rem; margin-top: 2px;">El medio llega por WhatsApp/Telegram o el usuario lo selecciona con el botón nativo <em>"Compartir con Detector SIS-330"</em>.</p>
-                                    </div>
-                                </div>
+                            <div class="point-item">
+                                <span class="point-number">Pilar 2</span>
+                                <h4 class="point-title">Procesamiento 100% en el Borde (Edge AI)</h4>
+                                <p class="point-desc">Los modelos TFLite cuantizados a INT8 corren en la CPU/NPU local. Cero archivos viajan a servidores; total privacidad y funcionamiento sin internet.</p>
+                            </div>
 
-                                <div style="display: flex; gap: 12px; align-items: flex-start;">
-                                    <div style="background: var(--gold); color: #FFF; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0;">2</div>
-                                    <div>
-                                        <strong style="color: var(--text-title); font-size: 0.9rem;">Inferencia Neuronal INT8 en el Borde</strong>
-                                        <p style="font-size: 0.84rem; margin-top: 2px;">Los clasificadores MobileNetV3 y EfficientNet-B0 procesan los tensores en menos de 45 ms sin consumo perceptible de batería.</p>
-                                    </div>
-                                </div>
-
-                                <div style="display: flex; gap: 12px; align-items: flex-start;">
-                                    <div style="background: var(--success); color: #FFF; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; flex-shrink: 0;">3</div>
-                                    <div>
-                                        <strong style="color: var(--text-title); font-size: 0.9rem;">Veredicto de Riesgo y Acción Preventiva</strong>
-                                        <p style="font-size: 0.84rem; margin-top: 2px;">Semáforo de riesgo claro (BAJO, MEDIO, ALTO) con desglose explicativo y botón directo de bloqueo/reporte preventivo.</p>
-                                    </div>
-                                </div>
+                            <div class="point-item">
+                                <span class="point-number">Pilar 3</span>
+                                <h4 class="point-title">Explicabilidad Transparente (XAI)</h4>
+                                <p class="point-desc">Superpone mapas de calor Grad-CAM que justifican al usuario exactamente qué regiones del rostro o frecuencias delataron el fraude.</p>
                             </div>
                         </div>
                     </div>
@@ -975,204 +665,159 @@
             </section>
 
             <!-- DIAPOSITIVA 4: ¿EN QUE SITUACIONES TE AYUDA? -->
-            <section class="slide-panel" id="slide-4"
-                data-notes="Respuesta a la segunda pregunta clave del Ing. Pacheco: ¿En qué situaciones te ayuda? Detallar los 4 casos de uso cotidianos: 1) Nota de voz de falso secuestro/emergencia, 2) Video de conocido pidiendo transferencias, 3) Verificación de fotos sospechosas recibidas en chats, 4) Protección activa para adultos mayores que no dominan tecnología.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Casos de Uso Reales</span>
-                        <h2 class="slide-heading">¿En Qué Situaciones Te Ayuda? Escenarios de Protección</h2>
-                        <p class="slide-subheading">Protección concreta del patrimonio y la tranquilidad familiar frente a incidentes comunes en mensajería.</p>
-                    </div>
-                    <span class="slide-badge-num">04 / 10</span>
+            <section class="slide-view" id="slide-4"
+                data-notes="Respuesta a la segunda pregunta clave del Ing. Pacheco: ¿En qué situaciones te ayuda? Citar los 4 escenarios de la vida real: 1) Nota de voz sospechosa de secuestro/urgencia en WhatsApp, 2) Video de colega pidiendo transferencia bancaria, 3) Duda con un archivo en la galería (usar el menú Compartir), 4) Adultos mayores que necesitan un semáforo de colores claro sin tecnicismos para no ser engañados.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Casos de Uso Prácticos</span>
+                    <span class="slide-index">04 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2">
-                        <div class="card" style="border-left: 4px solid var(--danger);">
-                            <div class="card-header-line">
-                                <span class="card-title" style="font-size: 0.98rem;">1. Falso Secuestro o Emergencia por WhatsApp</span>
-                                <span class="card-pill pill-red">Audio Clonado</span>
-                            </div>
-                            <p><strong>Situación:</strong> Un padre recibe una nota de voz de un número no registrado donde la voz idéntica a su hijo clama: <em>"Papá, me detuvo la policía, transfiéreme $300 a esta cuenta urgente"</em>.</p>
-                            <div class="callout-box" style="background: rgba(220, 38, 38, 0.06); border-left-color: var(--danger); font-size: 0.82rem;">
-                                <strong>Cómo te ayuda:</strong> El servicio en segundo plano intercepta el audio, extrae el espectrograma y notifica al instante: <em>"Riesgo Alto (94%): Anomalía espectral característica de clonación neuronal de voz"</em>, evitando que el padre transfiera dinero bajo pánico.
-                            </div>
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">¿En Qué Situaciones Te Ayuda? Escenarios Reales</h2>
+                    <p class="slide-subtitle">Protección preventiva del patrimonio familiar frente a situaciones cotidianas de riesgo.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-columns-2" style="gap: 40px;">
+                        <div class="point-item">
+                            <span class="point-number" style="color: var(--accent-red);">Escenario 1 · Audio</span>
+                            <h3 class="point-title">Nota de Voz de Emergencia Familiar en WhatsApp</h3>
+                            <p class="point-desc">
+                                <strong>Situación:</strong> Un padre de familia recibe un audio de un número no registrado donde la voz idéntica a su hijo clama: <em>"Papá, choqué el auto, hazme una transferencia urgente"</em>.<br>
+                                <strong>Cómo ayuda:</strong> La app analiza el espectro acústico en milisegundos y alerta: <em>"Riesgo Alto (94%): Anomalía espectral característica de clonación de voz"</em>, frenando la transferencia antes de que ocurra la pérdida.
+                            </p>
                         </div>
 
-                        <div class="card" style="border-left: 4px solid var(--gold);">
-                            <div class="card-header-line">
-                                <span class="card-title" style="font-size: 0.98rem;">2. Video de Amigo o Colega Pidiendo Préstamo</span>
-                                <span class="card-pill pill-gold">Video FaceSwap</span>
-                            </div>
-                            <p><strong>Situación:</strong> Llega un video corto donde un colega de trabajo o amigo parece hablar frente a la cámara solicitando un depósito bancario temporal.</p>
-                            <div class="callout-box gold" style="font-size: 0.82rem;">
-                                <strong>Cómo te ayuda:</strong> El detector muestrea 5 fotogramas clave, evalúa los rostros con la <strong>regla de 3/5</strong> y analiza el canal de audio. Si la fusión supera el umbral, advierte que el rostro fue reemplazado sintéticamente.
-                            </div>
+                        <div class="point-item">
+                            <span class="point-number" style="color: var(--accent-amber);">Escenario 2 · Video</span>
+                            <h3 class="point-title">Video de Amigo o Colega Pidiendo un Préstamo</h3>
+                            <p class="point-desc">
+                                <strong>Situación:</strong> Llega un video corto donde un colega pide un depósito temporal a una cuenta ajena.<br>
+                                <strong>Cómo ayuda:</strong> Extrae 5 fotogramas clave, evalúa los rostros con la <strong>regla de 3/5</strong> y avisa que los bordes faciales y parpadeos fueron manipulados sintéticamente (FaceSwap).
+                            </p>
                         </div>
 
-                        <div class="card" style="border-left: 4px solid var(--primary);">
-                            <div class="card-header-line">
-                                <span class="card-title" style="font-size: 0.98rem;">3. Análisis Bajo Demanda desde la Galería</span>
-                                <span class="card-pill pill-blue">Compartir</span>
-                            </div>
-                            <p><strong>Situación:</strong> El usuario tiene dudas sobre una foto o audio descargado y desea comprobar su autenticidad antes de reenviarlo o tomar decisiones.</p>
-                            <div class="callout-box" style="font-size: 0.82rem;">
-                                <strong>Cómo te ayuda:</strong> Selecciona el archivo en su galería, presiona <em>Compartir</em> y elige <em>Detector SIS-330</em>. En 40 ms obtiene el mapa de activación Grad-CAM que resalta si los ojos o la piel fueron manipulados.
-                            </div>
+                        <div class="point-item">
+                            <span class="point-number" style="color: var(--accent-blue);">Escenario 3 · Demanda</span>
+                            <h3 class="point-title">Verificación Rápida desde la Galería</h3>
+                            <p class="point-desc">
+                                <strong>Situación:</strong> El usuario tiene guardado un archivo dudoso y no sabe si es auténtico.<br>
+                                <strong>Cómo ayuda:</strong> Presiona el botón nativo de Android <em>"Compartir con Detector SIS-330"</em> y en 40 ms obtiene el veredicto con su mapa Grad-CAM de calor.
+                            </p>
                         </div>
 
-                        <div class="card" style="border-left: 4px solid var(--success);">
-                            <div class="card-header-line">
-                                <span class="card-title" style="font-size: 0.98rem;">4. Protección para Usuarios Vulnerables</span>
-                                <span class="card-pill pill-green">Preventivo</span>
-                            </div>
-                            <p><strong>Situación:</strong> Adultos mayores o jóvenes que confían ciegamente en audios familiares y no tienen formación técnica en ciberseguridad.</p>
-                            <div class="callout-box green" style="font-size: 0.82rem;">
-                                <strong>Cómo te ayuda:</strong> Alerta con un código de colores intuitivo (Verde: Seguro / Rojo: Fraude) y texto explicativo claro sin tecnicismos complejos, permitiendo bloquear el número de inmediato con un solo toque.
-                            </div>
+                        <div class="point-item">
+                            <span class="point-number" style="color: var(--accent-green);">Escenario 4 · Inclusión</span>
+                            <h3 class="point-title">Protección para Adultos Mayores y Familiares</h3>
+                            <p class="point-desc">
+                                <strong>Situación:</strong> Personas mayores vulnerables a engaños por su escaso conocimiento técnico.<br>
+                                <strong>Cómo ayuda:</strong> Señalización inmediata mediante semáforo de colores (Verde: Seguro, Rojo: Fraude) y botón directo de bloqueo para evitar que continúe la comunicación extorsiva.
+                            </p>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- DIAPOSITIVA 5: ARQUITECTURA TECNICA Y PIPELINE -->
-            <section class="slide-panel" id="slide-5"
-                data-notes="Explicar el pipeline técnico: Mostrar cómo el diseño respeta la ingeniería de software. 1) Ingesta vía MediaRouter o Service, 2) Preprocesamiento nativo (Mel spectrogram a 16kHz y recorte facial con normalización), 3) Modelos cuantizados INT8, 4) Fusión y XAI. Destacar que no se requiere internet.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Ingeniería del Sistema</span>
-                        <h2 class="slide-heading">Arquitectura Técnica: Pipeline de Inferencia Edge AI</h2>
-                        <p class="slide-subheading">Diseño desacoplado y optimizado para ejecución nativa en dispositivos móviles Android.</p>
-                    </div>
-                    <span class="slide-badge-num">05 / 10</span>
+            <!-- DIAPOSITIVA 5: ARQUITECTURA TECNICA EDGE AI -->
+            <section class="slide-view" id="slide-5"
+                data-notes="Explicar la arquitectura de software: Mostrar al docente la solidez de la ingeniería. No es una app improvisada: tiene 4 capas bien definidas: 1) Ingesta nativa con MediaRouter y NotificationListenerService, 2) Preprocesamiento tensorial (Mel 128x128 y recorte facial 224x224), 3) Inferencia con TFLite INT8, 4) Fusión y XAI. Sin dependencias externas de internet.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Arquitectura de Software</span>
+                    <span class="slide-index">05 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-4">
-                        <div class="card" style="border-top: 3px solid var(--primary-light);">
-                            <div class="card-pill pill-blue">Capa 1: Ingesta</div>
-                            <div class="card-title" style="font-size: 0.95rem;">Captura de Medios</div>
-                            <p style="font-size: 0.82rem;">
-                                Despacho multicanal de archivos y eventos entrantes:
-                            </p>
-                            <ul class="feature-list" style="font-size: 0.78rem;">
-                                <li class="feature-item"><span class="feature-bullet"></span><code>NotificationMonitor</code></li>
-                                <li class="feature-item"><span class="feature-bullet"></span><code>MediaRouter</code> nativo</li>
-                                <li class="feature-item"><span class="feature-bullet"></span>Intent Filter (Share)</li>
-                            </ul>
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">Arquitectura Técnica: Pipeline de Inferencia en el Borde</h2>
+                    <p class="slide-subtitle">Diseño modular de cuatro capas optimizado para rendimiento en tiempo real en Android.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-columns-2" style="align-items: stretch; gap: 40px;">
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <div class="point-item">
+                                <span class="point-number">Fase 1 · Ingesta</span>
+                                <h4 class="point-title">Captura Desacoplada de Medios</h4>
+                                <p class="point-desc"><code>NotificationMonitorService</code> para escucha pasiva de mensajería y <code>MediaRouter</code> nativo para recepción de Intents de compartición.</p>
+                            </div>
+
+                            <div class="point-item">
+                                <span class="point-number">Fase 2 · Preproceso</span>
+                                <h4 class="point-title">Extracción de Señales y Tensores</h4>
+                                <p class="point-desc">Audio resampleado a 16 kHz y transformado a espectrogramas Mel (128 bandas). Imágenes detectadas con Haar Cascade y normalizadas a 224x224x3.</p>
+                            </div>
                         </div>
 
-                        <div class="card" style="border-top: 3px solid var(--gold-light);">
-                            <div class="card-pill pill-gold">Capa 2: Preproceso</div>
-                            <div class="card-title" style="font-size: 0.95rem;">Extracción Tensorial</div>
-                            <p style="font-size: 0.82rem;">
-                                Transformación de señales a matrices normalizadas:
-                            </p>
-                            <ul class="feature-list" style="font-size: 0.78rem;">
-                                <li class="feature-item"><span class="feature-bullet gold"></span>Audio: STFT Mel 128x128</li>
-                                <li class="feature-item"><span class="feature-bullet gold"></span>Visión: Crop 224x224x3</li>
-                                <li class="feature-item"><span class="feature-bullet gold"></span>Resampleo a 16 kHz</li>
-                            </ul>
-                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <div class="point-item">
+                                <span class="point-number">Fase 3 · Inferencia</span>
+                                <h4 class="point-title">Redes Convolucionales Cuantizadas (INT8)</h4>
+                                <p class="point-desc">MobileNetV3-Small (Audio) y EfficientNet-B0 (Visión) ejecutándose en el motor C++ de TensorFlow Lite en memoria RAM local.</p>
+                            </div>
 
-                        <div class="card" style="border-top: 3px solid var(--success-light);">
-                            <div class="card-pill pill-green">Capa 3: Inferencia</div>
-                            <div class="card-title" style="font-size: 0.95rem;">Modelos INT8</div>
-                            <p style="font-size: 0.82rem;">
-                                Clasificación con motores TFLite en memoria:
-                            </p>
-                            <ul class="feature-list" style="font-size: 0.78rem;">
-                                <li class="feature-item"><span class="feature-bullet green"></span>MobileNetV3-Small</li>
-                                <li class="feature-item"><span class="feature-bullet green"></span>EfficientNet-B0</li>
-                                <li class="feature-item"><span class="feature-bullet green"></span>Post-Training Quant</li>
-                            </ul>
-                        </div>
-
-                        <div class="card" style="border-top: 3px solid #8B5CF6;">
-                            <div class="card-pill" style="background: rgba(139, 92, 246, 0.12); color: #A78BFA; border: 1px solid rgba(139, 92, 246, 0.3);">Capa 4: Fusión</div>
-                            <div class="card-title" style="font-size: 0.95rem;">Toma de Decisión</div>
-                            <p style="font-size: 0.82rem;">
-                                Arbitraje biométrico con respaldo explicable:
-                            </p>
-                            <ul class="feature-list" style="font-size: 0.78rem;">
-                                <li class="feature-item"><span class="feature-bullet"></span>Late Fusion 55 / 45</li>
-                                <li class="feature-item"><span class="feature-bullet"></span>Regla de 3/5 en video</li>
-                                <li class="feature-item"><span class="feature-bullet"></span>Grad-CAM Overlay</li>
-                            </ul>
+                            <div class="point-item">
+                                <span class="point-number">Fase 4 · Decisión</span>
+                                <h4 class="point-title">Late Fusion y Generación Explicable</h4>
+                                <p class="point-desc">Fusión ponderada 55/45, regla de confirmación 3/5 en video y renderizado reactivo con Grad-CAM Overlay en Jetpack Compose.</p>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="card" style="background: var(--bg-surface); padding: 18px;">
-                        <div class="card-title" style="font-size: 0.92rem; color: var(--gold-light);">
-                            Garantía de Privacidad y Rendimiento en Hardware
-                        </div>
-                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                            Al ejecutarse completamente en el dispositivo móvil (Edge AI), el sistema no transmite paquetes de voz ni rostros hacia la nube, cumpliendo con las directivas más estrictas de privacidad (RGPD) y asegurando que la protección esté disponible incluso en modo avión o sin saldo de datos.
-                        </p>
+                    <div class="quote-statement" style="margin-top: 28px; font-size: 0.95rem;">
+                        <strong>Garantía de Privacidad y Disponibilidad:</strong> Ningún paquete de voz ni imagen abandona el celular. Funciona con o sin conexión de datos móviles.
                     </div>
                 </div>
             </section>
 
             <!-- DIAPOSITIVA 6: MODELOS DE IA Y FUSION 55/45 -->
-            <section class="slide-panel" id="slide-6"
-                data-notes="Explicar la arquitectura de redes neuronales: MobileNetV3-Small para audio (espectrogramas Mel) y EfficientNet-B0 para visión. Detallar la fórmula matemática de fusión tardía (55% audio / 45% visión) y la regla de 3/5: en video se extraen 5 fotogramas clave y al menos 3 deben tener anomalía visual para no alertar falsamente si alguien simplemente pestañea o se mueve rápido.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Redes Neuronales y Fusión</span>
-                        <h2 class="slide-heading">Modelos Especializados y Regla de Fusión 55/45</h2>
-                        <p class="slide-subheading">Estrategia de ensamble multimodal mediante Late Fusion calibrada empíricamente.</p>
-                    </div>
-                    <span class="slide-badge-num">06 / 10</span>
+            <section class="slide-view" id="slide-6"
+                data-notes="Explicar los modelos neuronales al docente: Experto de audio MobileNetV3-Small entrenado con ASVspoof 2019, Experto de visión EfficientNet-B0 entrenado con CIFAKE y FaceForensics++. Explicar la justificación de la fórmula: 55% para audio y 45% para visión, porque la voz clonada es más estable en artefactos que el video comprimido. Y la regla de 3/5 para evitar falsos positivos por parpadeo.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Modelos y Arbitraje</span>
+                    <span class="slide-index">06 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2">
-                        <div class="card">
-                            <div class="card-header-line">
-                                <span class="card-title">Experto de Audio: MobileNetV3-Small</span>
-                                <span class="card-pill pill-blue">Audio INT8</span>
-                            </div>
-                            <p style="font-size: 0.86rem;">
-                                Optimizado para señales bioacústicas. Procesa el espectrograma Mel en escala logarítmica para captar la correlación temporal y de frecuencia en la voz humana.
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">Modelos Especializados y Regla de Fusión 55/45</h2>
+                    <p class="slide-subtitle">Ensamble multimodal tardío (Late Fusion) calibrado empíricamente para mitigar falsos positivos.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-columns-2" style="gap: 48px;">
+                        <div class="point-item">
+                            <span class="point-number">Audio · MobileNetV3-Small</span>
+                            <h3 class="point-title">Clasificador Espectral Acústico</h3>
+                            <p class="point-desc">
+                                Entrenado sobre el benchmark internacional <strong>ASVspoof 2019</strong>. Detecta inconsistencias de fase, artefactos de vocoder neuronal y discontinuidades armónicas imperceptibles para el oído humano.
                             </p>
-                            <div style="background: var(--bg-surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-size: 0.82rem; font-family: var(--font-mono);">
-                                Entrada: Tensor [1, 128, 128, 1]<br>
-                                Dataset: ASVspoof 2019 (LA / PA)<br>
-                                Foco: Artefactos vocoder y discontinuidad de fase
-                            </div>
+                            <p class="point-desc" style="font-family: var(--font-mono); font-size: 0.82rem; margin-top: 8px;">
+                                Entrada: [1, 128, 128, 1] · Peso INT8: 4.8 MB · Latencia: 38 ms
+                            </p>
                         </div>
 
-                        <div class="card">
-                            <div class="card-header-line">
-                                <span class="card-title">Experto de Visión: EfficientNet-B0</span>
-                                <span class="card-pill pill-gold">Visión INT8</span>
-                            </div>
-                            <p style="font-size: 0.86rem;">
-                                Arquitectura convolucional escalada con Compound Scaling. Evalúa las microtexturas de la piel, la coherencia de reflejos corneales y las costuras de mezcla.
+                        <div class="point-item">
+                            <span class="point-number">Visión · EfficientNet-B0</span>
+                            <h3 class="point-title">Clasificador de Inconsistencia Facial</h3>
+                            <p class="point-desc">
+                                Entrenado sobre <strong>FaceForensics++</strong> y <strong>CIFAKE</strong>. Analiza distorsiones en microtextura de piel, simetría ocular y costuras de reemplazo de rostros (FaceSwap / Deepfakes).
                             </p>
-                            <div style="background: var(--bg-surface); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-size: 0.82rem; font-family: var(--font-mono);">
-                                Entrada: Tensor [1, 224, 224, 3]<br>
-                                Dataset: CIFAKE + FaceForensics++<br>
-                                Foco: Inconsistencia periocular y costuras FaceSwap
-                            </div>
+                            <p class="point-desc" style="font-family: var(--font-mono); font-size: 0.82rem; margin-top: 8px;">
+                                Entrada: [1, 224, 224, 3] · Peso INT8: 8.9 MB · Latencia: 45 ms
+                            </p>
                         </div>
                     </div>
 
-                    <div class="card" style="border-left: 4px solid var(--primary-light);">
-                        <div class="card-title" style="font-size: 1rem; color: var(--text-title);">
-                            Fórmula de Fusión Tardía y Regla de Decisión 3/5 para Video
-                        </div>
-                        <div class="grid-2" style="margin-top: 6px; align-items: center;">
+                    <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line-subtle);">
+                        <div class="layout-columns-2">
                             <div>
-                                <p style="font-size: 0.88rem; line-height: 1.5;">
-                                    <strong>Score-Level Late Fusion:</strong><br>
-                                    <code style="color: var(--gold-light); font-size: 0.95rem; font-family: var(--font-mono);">Riesgo_Global = 0.55 × P_Audio + 0.45 × P_Visión</code>
-                                </p>
-                                <p style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 6px;">
-                                    La ponderación del <strong>55% para audio</strong> se fundamenta en que los artefactos de clonación de voz son más estables y difíciles de disimular que las compresiones visuales en mensajería móvil.
+                                <span class="point-number">Ecuación de Fusión Tardía</span>
+                                <div style="font-family: var(--font-mono); font-size: 1.15rem; color: var(--accent-blue); margin: 6px 0; font-weight: 700;">
+                                    Riesgo_Global = (0.55 × P_Audio) + (0.45 × P_Visión)
+                                </div>
+                                <p class="point-desc" style="font-size: 0.88rem;">
+                                    Se asigna 55% al canal de audio debido a que la síntesis de voz conserva artefactos espectrales más consistentes frente a la compresión de video.
                                 </p>
                             </div>
-                            <div style="background: var(--bg-surface); padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-size: 0.84rem;">
-                                <strong style="color: var(--text-title);">Regla de Confirmación 3/5:</strong>
-                                <p style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 4px;">
-                                    En archivos de video se analizan 5 fotogramas clave. Se exige que <strong>al menos 3 de los 5 fotogramas</strong> muestren probabilidad de manipulación para activar la alarma visual, suprimiendo falsos positivos por parpadeo o desenfoque natural.
+                            <div>
+                                <span class="point-number">Regla de Confirmación 3/5 en Video</span>
+                                <div style="font-family: var(--font-mono); font-size: 1.05rem; color: var(--accent-amber); margin: 6px 0; font-weight: 700;">
+                                    Al menos 3 de 5 fotogramas anómalos
+                                </div>
+                                <p class="point-desc" style="font-size: 0.88rem;">
+                                    Evita falsas alarmas provocadas por parpadeos naturales de los ojos o desenfoques de movimiento momentáneos durante la grabación.
                                 </p>
                             </div>
                         </div>
@@ -1180,243 +825,212 @@
                 </div>
             </section>
 
-            <!-- DIAPOSITIVA 7: MONITOREO DE NOTIFICACIONES WHATSAPP -->
-            <section class="slide-panel" id="slide-7"
-                data-notes="Explicar cómo funciona el escuchador de WhatsApp y Telegram. Usa NotificationListenerService de Android sin root. Es silencioso. Si llega un texto plano o enlace, la app lo descarta inmediatamente para no dar falsos positivos. Solo atiende contenido biométrico (notas de voz y videos). Si la nota de voz está descargándose, espera pacientemente con riesgo 0.0% neutro.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Monitoreo en Tiempo Real</span>
-                        <h2 class="slide-heading">Monitoreo e Intercepción Silenciosa de WhatsApp / Telegram</h2>
-                        <p class="slide-subheading">Servicio en segundo plano con filtrado inteligente de medios y consumo cero en reposo.</p>
-                    </div>
-                    <span class="slide-badge-num">07 / 10</span>
+            <!-- DIAPOSITIVA 7: MONITOREO DE WHATSAPP -->
+            <section class="slide-view" id="slide-7"
+                data-notes="Explicar cómo funciona el escuchador de notificaciones. Es 100% nativo de Android mediante NotificationListenerService. Descarta inmediatamente textos y enlaces (cero falsos positivos en enlaces de YouTube o TikTok). Cuando entra una nota de voz, si está descargándose espera en riesgo neutro 0.0%, y al completarse la analiza con el modelo de audio.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Monitoreo Silencioso</span>
+                    <span class="slide-index">07 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2-1">
-                        <div style="display: flex; flex-direction: column; gap: 16px;">
-                            <div class="card">
-                                <div class="card-title" style="color: var(--primary-light);">
-                                    Implementación Nativa en Android
-                                </div>
-                                <p style="font-size: 0.88rem;">
-                                    Utiliza el componente del sistema <code>NotificationListenerService</code> registrado en el <code>AndroidManifest.xml</code>. Escucha de manera no invasiva las notificaciones entrantes de las aplicaciones de mensajería más utilizadas (WhatsApp y Telegram).
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">Monitoreo e Intercepción Silenciosa de WhatsApp / Telegram</h2>
+                    <p class="slide-subtitle">Vigilancia en segundo plano sin consumo de batería ni violación de la privacidad del chat.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-media-text">
+                        <div>
+                            <div class="point-item" style="margin-bottom: 20px;">
+                                <span class="point-number">Servicio en Segundo Plano</span>
+                                <h3 class="point-title">NotificationListenerService Nativo</h3>
+                                <p class="point-desc">
+                                    Escucha los eventos de notificación sin necesidad de permisos intrusivos de lectura de conversaciones privadas ni acceso root.
                                 </p>
                             </div>
 
-                            <div class="card" style="border-left: 4px solid var(--success);">
-                                <div class="card-title" style="color: var(--success-light); font-size: 0.95rem;">
-                                    Filtrado Inteligente de Medios (Anti Falsos Positivos)
-                                </div>
-                                <ul class="feature-list" style="font-size: 0.84rem;">
-                                    <li class="feature-item">
-                                        <span class="feature-bullet green"></span>
-                                        <strong>Descarte Inmediato de Textos y Enlaces:</strong> Mensajes de texto normales, enlaces de YouTube/TikTok o stickers son ignorados de inmediato, asegurando que la app no juzgue textos sin inferencia neuronal.
-                                    </li>
-                                    <li class="feature-item">
-                                        <span class="feature-bullet green"></span>
-                                        <strong>Manejo de Descarga Pendiente:</strong> Cuando entra una nota de voz o video que aún no ha terminado de descargarse en el almacenamiento, se registra con riesgo neutro (0.0% BAJO) en espera de archivo real.
-                                    </li>
-                                    <li class="feature-item">
-                                        <span class="feature-bullet green"></span>
-                                        <strong>Intercepción de Audio PTT / Video:</strong> Al completarse el archivo, se despacha al clasificador correspondiente para generar la alerta preventiva al usuario.
-                                    </li>
-                                </ul>
+                            <div class="point-item" style="margin-bottom: 20px;">
+                                <span class="point-number">Filtrado Inteligente</span>
+                                <h3 class="point-title">Descarte Inmediato de Textos y Enlaces</h3>
+                                <p class="point-desc">
+                                    Los mensajes de texto planos y enlaces externos son descartados de inmediato sin generar alarmas, concentrando el sistema estrictamente en cargas biométricas (notas de voz y videos).
+                                </p>
+                            </div>
+
+                            <div class="point-item">
+                                <span class="point-number">Estado Neutro</span>
+                                <h3 class="point-title">Manejo de Descarga Pendiente</h3>
+                                <p class="point-desc">
+                                    Si una nota de voz aún no termina de descargarse en el almacenamiento del celular, el sistema marca estado neutro (0.0% BAJO) en espera de archivo real, sin inventar riesgos falsos.
+                                </p>
                             </div>
                         </div>
 
-                        <div class="figure-wrapper">
-                            <img src="./pruebas/08_app_monitoreo_whatsapp_servicio.png" alt="Monitoreo de Notificaciones en la App">
-                            <span class="figure-caption">Captura real: Interfaz de Monitoreo de Notificaciones y Simulador de Medios</span>
+                        <div class="media-clean-frame">
+                            <img src="./pruebas/08_app_monitoreo_whatsapp_servicio.png" alt="Pantalla de Monitoreo de Notificaciones">
+                            <span class="media-caption">Captura real: Interfaz de Monitoreo en Vivo e Historial de Notificaciones</span>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- DIAPOSITIVA 8: XAI GRAD-CAM Y EXPLICABILIDAD -->
-            <section class="slide-panel" id="slide-8"
-                data-notes="Explicar la Inteligencia Artificial Explicable (XAI). Decir al profesor: Un modelo de caja negra que solo dice 90% no sirve en ciberseguridad pericial. Nuestro sistema genera mapas de calor Grad-CAM que superponen sobre el rostro exactamente qué zona delató el deepfake (los ojos, la boca o los bordes de injerto). En audio, explica las frecuencias anómalas.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Transparencia y Ciberseguridad</span>
-                        <h2 class="slide-heading">Inteligencia Artificial Explicable (XAI): Grad-CAM y Evidencia</h2>
-                        <p class="slide-subheading">Transformando un modelo de caja negra en un veredicto pericial transparente y verificable.</p>
-                    </div>
-                    <span class="slide-badge-num">08 / 10</span>
+            <!-- DIAPOSITIVA 8: XAI GRAD-CAM -->
+            <section class="slide-view" id="slide-8"
+                data-notes="Explicar la Inteligencia Artificial Explicable (XAI): Decir al Ing. Pacheco: 'Un clasificador de caja negra que solo te dice 95% no sirve en ciberseguridad forense'. Nuestro sistema calcula los gradientes de la última capa convolucional y proyecta un mapa de calor Grad-CAM sobre el rostro, mostrando exactamente qué delató la manipulación: los ojos, la boca o los bordes de injerto.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Transparencia Pericial</span>
+                    <span class="slide-index">08 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2">
-                        <div style="display: flex; flex-direction: column; gap: 14px;">
-                            <div class="card">
-                                <div class="card-title" style="color: var(--gold-light);">
-                                    ¿Por Qué es Fundamental la Explicabilidad?
-                                </div>
-                                <p style="font-size: 0.88rem; line-height: 1.55;">
-                                    En aplicaciones de seguridad crítica y prevención de fraudes, un porcentaje numérico aislado resulta insuficiente. El usuario y el analista forense necesitan <strong>comprender el porqué</strong> de la decisión para confiar en el diagnóstico y proceder al bloqueo.
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">Inteligencia Artificial Explicable (XAI): Grad-CAM y Evidencia</h2>
+                    <p class="slide-subtitle">Transformando una predicción matemática en evidencia visual comprensible para el usuario.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-media-text">
+                        <div>
+                            <div class="quote-statement" style="margin-top: 0;">
+                                "En ciberseguridad, un número aislado genera desconfianza. El usuario necesita saber qué píxeles o frecuencias delataron la estafa."
+                            </div>
+
+                            <div class="point-item" style="margin-top: 24px;">
+                                <span class="point-number">Mapas de Activación Grad-CAM</span>
+                                <h3 class="point-title">Superposición Térmica sobre el Rostro</h3>
+                                <p class="point-desc">
+                                    Proyecta sobre el rostro un mapa de calor que resalta las zonas de máxima activación: anomalías en la zona periocular, comisuras labiales o costuras de fusión facial.
                                 </p>
                             </div>
 
-                            <div class="card" style="border-left: 4px solid var(--primary);">
-                                <div class="card-title" style="font-size: 0.95rem;">
-                                    Técnicas de XAI Implementadas
-                                </div>
-                                <ul class="feature-list" style="font-size: 0.84rem;">
-                                    <li class="feature-item">
-                                        <span class="feature-bullet"></span>
-                                        <strong>Mapas de Activación Grad-CAM:</strong> Calculan los gradientes de la última capa convolucional respecto a la clase fraude, proyectando un mapa de calor que ilumina las zonas donde la IA detectó inconsistencias (ojos, labios, bordes de corte).
-                                    </li>
-                                    <li class="feature-item">
-                                        <span class="feature-bullet gold"></span>
-                                        <strong>Diagnóstico Espectral en Audio:</strong> Resalta anomalías en las bandas armónicas superiores por encima de 4 kHz, típicas de la síntesis artificial.
-                                    </li>
-                                    <li class="feature-item">
-                                        <span class="feature-bullet green"></span>
-                                        <strong>Resumen Diagnóstico Pericial:</strong> Genera una explicación estructurada en lenguaje natural accesible para cualquier ciudadano.
-                                    </li>
-                                </ul>
+                            <div class="point-item" style="margin-top: 20px;">
+                                <span class="point-number">Diagnóstico en Lenguaje Natural</span>
+                                <h3 class="point-title">Dictamen Pericial Comprensible</h3>
+                                <p class="point-desc">
+                                    Emite un resumen forense claro: <em>"Alerta Crítica: Inconsistencia facial en zona peribucal y desfase espectral sintético"</em>, brindando certeza inmediata.
+                                </p>
                             </div>
                         </div>
 
-                        <div class="figure-wrapper">
-                            <img src="./pruebas/04_app_deteccion_deepfake_imagen.png" alt="Evidencia Grad-CAM en la App">
-                            <span class="figure-caption">Captura real: Superposición de mapa de calor Grad-CAM sobre rostro manipulado</span>
+                        <div class="media-clean-frame">
+                            <img src="./pruebas/04_app_deteccion_deepfake_imagen.png" alt="Superposición de Mapa de Calor Grad-CAM">
+                            <span class="media-caption">Captura real: Grad-CAM iluminando la región de manipulación facial</span>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- DIAPOSITIVA 9: VALIDACION EXPERIMENTAL Y METRICAS -->
-            <section class="slide-panel" id="slide-9"
-                data-notes="Mostrar las métricas formales al docente Ing. Pacheco. Mencionar los datasets reales: ASVspoof 2019 para audio, CIFAKE y FaceForensics++ para visión. Destacar el EER (Equal Error Rate) de 2.8% en multimodal y que la latencia en hardware real de teléfono es menor a 45 ms con consumo de batería 'Light' en el Android Profiler.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Validación Experimental</span>
-                        <h2 class="slide-heading">Resultados Empíricos: Métricas y Eficiencia en Hardware</h2>
-                        <p class="slide-subheading">Evaluación rigurosa sobre datasets estándar de ciberseguridad y perfilado en dispositivo real.</p>
-                    </div>
-                    <span class="slide-badge-num">09 / 10</span>
+            <!-- DIAPOSITIVA 9: RESULTADOS Y METRICAS -->
+            <section class="slide-view" id="slide-9"
+                data-notes="Explicar las métricas de rendimiento formales al Ing. Pacheco: Exactitud del 97.4% en multimodal, Equal Error Rate de solo 2.8% (reducción drástica al combinar audio y video), latencia menor a 45 ms por muestra en CPU de celular y consumo de RAM de solo 145 MB, calificado como 'Light' en el Android Profiler.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Validación Empírica</span>
+                    <span class="slide-index">09 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-2-1">
-                        <div style="display: flex; flex-direction: column; gap: 14px;">
-                            <div class="card" style="padding: 16px;">
-                                <div class="card-title" style="font-size: 0.95rem; margin-bottom: 6px;">
-                                    Comparativa de Desempeño de los Modelos
-                                </div>
-                                <table class="academic-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Modelo / Modalidad</th>
-                                            <th>Dataset Base</th>
-                                            <th>Exactitud</th>
-                                            <th>EER (%)</th>
-                                            <th>Latencia CPU</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td><strong>Experto Audio</strong> (MobileNetV3)</td>
-                                            <td>ASVspoof 2019 LA</td>
-                                            <td class="mono">94.8%</td>
-                                            <td class="mono">4.6%</td>
-                                            <td class="mono">38 ms</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Experto Visión</strong> (EfficientNet-B0)</td>
-                                            <td>CIFAKE / FF++</td>
-                                            <td class="mono">96.5%</td>
-                                            <td class="mono">3.9%</td>
-                                            <td class="mono">45 ms</td>
-                                        </tr>
-                                        <tr style="background: rgba(37, 99, 235, 0.08);">
-                                            <td><strong style="color: var(--primary-light);">Sistema Multimodal Fused</strong></td>
-                                            <td>Evaluación Conjunta</td>
-                                            <td class="mono" style="color: var(--success-light); font-weight: 700;">97.4%</td>
-                                            <td class="mono" style="color: var(--gold-light); font-weight: 700;">2.8%</td>
-                                            <td class="mono">&lt; 85 ms</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">Resultados Empíricos: Métricas y Eficiencia en Hardware</h2>
+                    <p class="slide-subtitle">Validación rigurosa sobre datasets internacionales y perfilado en dispositivo móvil real.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-media-text">
+                        <div>
+                            <table class="minimal-table">
+                                <thead>
+                                    <tr>
+                                        <th>Modalidad / Modelo</th>
+                                        <th>Exactitud</th>
+                                        <th>EER (%)</th>
+                                        <th>Latencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Experto Audio</strong> (MobileNetV3)</td>
+                                        <td class="mono">94.8%</td>
+                                        <td class="mono">4.6%</td>
+                                        <td class="mono">38 ms</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Experto Visión</strong> (EfficientNet-B0)</td>
+                                        <td class="mono">96.5%</td>
+                                        <td class="mono">3.9%</td>
+                                        <td class="mono">45 ms</td>
+                                    </tr>
+                                    <tr style="color: var(--accent-blue); font-weight: 700;">
+                                        <td><strong>Sistema Multimodal Fused</strong></td>
+                                        <td class="mono" style="color: var(--accent-green);">97.4%</td>
+                                        <td class="mono" style="color: var(--accent-amber);">2.8%</td>
+                                        <td class="mono">&lt; 85 ms</td>
+                                    </tr>
+                                </tbody>
+                            </table>
 
-                            <div class="stat-grid">
-                                <div class="stat-card">
-                                    <div class="stat-number green">145 MB</div>
-                                    <div class="stat-label">Pico de Memoria RAM</div>
-                                    <div class="stat-subtext">Apto para gama baja/media</div>
+                            <div class="metrics-strip" style="margin-top: 24px;">
+                                <div class="metric-block">
+                                    <span class="metric-value green">145 MB</span>
+                                    <span class="metric-label">RAM Pico</span>
+                                    <span class="metric-sub">Apto para gama baja</span>
                                 </div>
-                                <div class="stat-card">
-                                    <div class="stat-number">&lt; 15 MB</div>
-                                    <div class="stat-label">Peso de Modelos</div>
-                                    <div class="stat-subtext">Cuantización INT8</div>
+                                <div class="metric-block">
+                                    <span class="metric-value accent">&lt; 15 MB</span>
+                                    <span class="metric-label">Peso INT8</span>
+                                    <span class="metric-sub">Modelos compactos</span>
                                 </div>
-                                <div class="stat-card">
-                                    <div class="stat-number gold">&lt; 1.2% / h</div>
-                                    <div class="stat-label">Impacto Batería</div>
-                                    <div class="stat-subtext">Android Profiler: Light</div>
+                                <div class="metric-block">
+                                    <span class="metric-value amber">&lt; 1.2%</span>
+                                    <span class="metric-label">Batería / Hora</span>
+                                    <span class="metric-sub">Android Profiler: Light</span>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="figure-wrapper">
+                        <div class="media-clean-frame">
                             <img src="./pruebas-nuevas/01_curva_roc_multimodal.png" alt="Curva ROC Multimodal">
-                            <span class="figure-caption">Curva ROC: Fusión Multimodal (AUC = 0.991) vs Expertos Individuales</span>
+                            <span class="media-caption">Curva ROC Multimodal: AUC = 0.991 superando a los modelos individuales</span>
                         </div>
                     </div>
                 </div>
             </section>
 
             <!-- DIAPOSITIVA 10: CONCLUSIONES E IMPACTO SOCIAL -->
-            <section class="slide-panel" id="slide-10"
-                data-notes="Cierre de la defensa ante el Ing. Pacheco Lora: Resumir los 3 logros principales: 1) Prototipo 100% funcional en Android alineado con el programa de SIS 330, 2) Impacto social protegiendo a la comunidad boliviana sin costo, 3) Demostración de que la IA en el borde (Edge AI) es la solución viable ante la crisis de privacidad. Agradecer al docente y dar paso a preguntas.">
-                <div class="slide-header">
-                    <div class="slide-title-group">
-                        <span class="slide-category">Conclusiones del Proyecto</span>
-                        <h2 class="slide-heading">Conclusiones, Impacto Social y Trabajo Futuro</h2>
-                        <p class="slide-subheading">Aportes concretos para la seguridad digital ciudadana y el estado del arte en Edge AI.</p>
-                    </div>
-                    <span class="slide-badge-num">10 / 10</span>
+            <section class="slide-view" id="slide-10"
+                data-notes="Cierre de la defensa ante el docente: 1) Cumplimiento al 100% de la materia SIS 330 con una app real y funcional en Android, 2) Impacto social protegiendo al ciudadano boliviano de la extorsión de forma gratuita, 3) Demostración de que la IA en el borde (Edge AI) es viable y necesaria. Agradecer al Ing. Carlos Walter Pacheco Lora y abrir el espacio de preguntas.">
+                <div class="slide-top-meta">
+                    <span class="slide-category">Conclusiones del Proyecto</span>
+                    <span class="slide-index">10 / 10</span>
                 </div>
-                <div class="slide-body">
-                    <div class="grid-3">
-                        <div class="card" style="border-top: 3px solid var(--success-light);">
-                            <div class="card-pill pill-green">Logro Académico</div>
-                            <div class="card-title" style="font-size: 1rem;">Cumplimiento Total SIS-330</div>
-                            <p style="font-size: 0.86rem;">
-                                Se implementó y validó una arquitectura completa de Inteligencia Artificial móvil: desde la preparación de datasets científicos hasta la cuantización INT8 y el despliegue nativo en Android con interfaz moderna y reactiva.
+                <div class="slide-title-block">
+                    <h2 class="slide-main-title">Conclusiones, Impacto Social y Trabajo Futuro</h2>
+                    <p class="slide-subtitle">Aportes concretos para la seguridad ciudadana y el avance del desarrollo de aplicaciones inteligentes.</p>
+                </div>
+                <div class="slide-content-area">
+                    <div class="layout-columns-3">
+                        <div class="point-item">
+                            <span class="point-number">01 · Académico</span>
+                            <h3 class="point-title">Cumplimiento Integral SIS-330</h3>
+                            <p class="point-desc">
+                                Se cubrió el ciclo completo de ingeniería: preparación de datasets científicos, entrenamiento y optimización cuantizada INT8, y despliegue nativo en Android con interfaz moderna en Jetpack Compose.
                             </p>
                         </div>
 
-                        <div class="card" style="border-top: 3px solid var(--gold-light);">
-                            <div class="card-pill pill-gold">Impacto Social</div>
-                            <div class="card-title" style="font-size: 1rem;">Protección Ciudadana Real</div>
-                            <p style="font-size: 0.86rem;">
-                                Brinda a la población una herramienta preventiva gratuita y autónoma para resguardar su patrimonio y tranquilidad familiar frente a la creciente ola de extorsiones por WhatsApp y falsos secuestros virtuales en Bolivia.
+                        <div class="point-item">
+                            <span class="point-number">02 · Social</span>
+                            <h3 class="point-title">Protección Ciudadana Real</h3>
+                            <p class="point-desc">
+                                Pone al alcance de cualquier ciudadano una defensa preventiva gratuita contra extorsiones y fraudes biométricos por WhatsApp, protegiendo a familias y adultos mayores en Bolivia.
                             </p>
                         </div>
 
-                        <div class="card" style="border-top: 3px solid var(--primary-light);">
-                            <div class="card-pill pill-blue">Innovación Tecnológica</div>
-                            <div class="card-title" style="font-size: 1rem;">Edge AI y Privacidad</div>
-                            <p style="font-size: 0.86rem;">
-                                Demuestra que es plenamente factible ejecutar modelos de redes neuronales profundas y análisis explicable (XAI) en smartphones estándar sin vulnerar la privacidad ni depender de servidores en la nube.
+                        <div class="point-item">
+                            <span class="point-number">03 · Tecnológico</span>
+                            <h3 class="point-title">Viabilidad de Edge AI y XAI</h3>
+                            <p class="point-desc">
+                                Demuestra que es totalmente factible ejecutar redes neuronales profundas con explicación visual en smartphones convencionales sin comprometer la privacidad ni consumir batería excesiva.
                             </p>
                         </div>
                     </div>
 
-                    <div class="card" style="background: var(--bg-surface); padding: 20px; border-color: var(--border-light);">
-                        <div class="card-header-line">
-                            <span class="card-title" style="font-size: 0.95rem; color: var(--gold-light);">
-                                Proyecciones Futuras y Cierre
-                            </span>
-                            <span style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">USFX · Gestión 2026</span>
+                    <div style="margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--line-subtle); display: flex; justify-content: space-between; align-items: baseline;">
+                        <div>
+                            <span style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">Muchas gracias por su atención. Espacio abierto a preguntas.</span>
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">Universidad Mayor Real y Pontificia de San Francisco Xavier de Chuquisaca · Gestión 2026</p>
                         </div>
-                        <p style="font-size: 0.86rem; color: var(--text-secondary); margin-top: 4px;">
-                            Como líneas de investigación futura se proyecta incorporar modelos de detección de sincronía labial dinámica (Lip-syncing) en videollamadas en vivo y optimización para procesadores NPU emergentes.
-                        </p>
-                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 0.86rem;">
-                            <span style="color: var(--text-title); font-weight: 600;">Muchas gracias por su atención. Espacio abierto a preguntas y observaciones.</span>
-                            <span style="color: var(--primary-light); font-weight: 700;">Ing. Pacheco Lora Carlos Walter</span>
-                        </div>
+                        <span style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--accent-blue); font-weight: 600;">Ing. Pacheco Lora Carlos Walter</span>
                     </div>
                 </div>
             </section>
@@ -1424,156 +1038,100 @@
         </div>
     </main>
 
-    <!-- DRAWER DE NOTAS DEL ORADOR (TECLA N) -->
-    <div id="notesDrawer" class="notes-drawer">
-        <div class="notes-header">
-            <span class="notes-title">Notas de Apoyo para la Exposición (Jhojan Erick Romero)</span>
-            <button id="btnCloseNotes" class="btn-ctrl" style="padding: 2px 8px; font-size: 0.72rem;">Cerrar [N]</button>
-        </div>
-        <p id="notesText" class="notes-content">Cargando notas...</p>
-    </div>
-
-    <!-- MODAL DE ATAJOS DE TECLADO (TECLA ?) -->
-    <div id="shortcutsModal" class="shortcuts-modal">
-        <div class="shortcuts-card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h3 style="font-family: var(--font-display); font-size: 1.1rem; color: var(--text-title);">Atajos de Navegación</h3>
-                <button id="btnCloseShortcuts" class="btn-ctrl" style="padding: 2px 8px;">Cerrar [Esc]</button>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div class="kbd-row"><span>Siguiente diapositiva</span><div><kbd>→</kbd> o <kbd>Espacio</kbd></div></div>
-                <div class="kbd-row"><span>Diapositiva anterior</span><div><kbd>←</kbd></div></div>
-                <div class="kbd-row"><span>Primera / Última diapositiva</span><div><kbd>Inicio</kbd> / <kbd>Fin</kbd></div></div>
-                <div class="kbd-row"><span>Pantalla completa</span><div><kbd>F</kbd></div></div>
-                <div class="kbd-row"><span>Mostrar notas del orador</span><div><kbd>N</kbd></div></div>
-                <div class="kbd-row"><span>Iniciar / Pausar cronómetro</span><div><kbd>T</kbd></div></div>
-                <div class="kbd-row"><span>Imprimir / Exportar a PDF</span><div><kbd>Ctrl</kbd> + <kbd>P</kbd></div></div>
-            </div>
-        </div>
+    <!-- NOTAS DEL ORADOR FLOTANTES (TECLA N) -->
+    <div id="notesPanel" class="notes-panel">
+        <div class="notes-title">Notas de Apoyo para la Exposición Oral (Jhojan Erick Romero)</div>
+        <div id="notesText" class="notes-text">Cargando notas...</div>
     </div>
 
     <!-- FOOTER INFERIOR DE NAVEGACION -->
-    <footer class="pres-footer">
-        <div class="nav-buttons-group">
-            <button id="btnPrev" class="btn-nav secondary" title="Anterior (Flecha Izquierda)">← Anterior</button>
-            <button id="btnNext" class="btn-nav" title="Siguiente (Flecha Derecha / Espacio)">Siguiente →</button>
+    <footer class="nav-footer">
+        <div class="nav-buttons">
+            <button id="btnPrev" class="btn-nav-secondary">← Anterior</button>
+            <button id="btnNext" class="btn-nav-primary">Siguiente →</button>
         </div>
 
-        <div class="nav-progress-dots" id="dotsContainer">
-            <!-- Generado dinámicamente: 10 botones de diapositiva -->
+        <div class="progress-indicator" id="progressIndicator">
+            <!-- 10 píldoras de progreso -->
         </div>
 
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <span id="slideCounterText" style="font-family: var(--font-mono); font-size: 0.84rem; color: var(--text-secondary); font-weight: 600;">
-                Diapositiva 1 de 10
-            </span>
-        </div>
+        <span id="slideCounter" style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">
+            1 / 10
+        </span>
     </footer>
 
-    <!-- SCRIPT DE INTERACTIVIDAD Y NAVEGACION -->
+    <!-- SCRIPT DE CONTROL Y NAVEGACION -->
     <script>
         (function() {
-            const TOTAL_SLIDES = 10;
-            let currentSlide = 1;
-            
-            // Elementos DOM
-            const slides = document.querySelectorAll('.slide-panel');
-            const dotsContainer = document.getElementById('dotsContainer');
+            const TOTAL = 10;
+            let current = 1;
+
+            const slides = document.querySelectorAll('.slide-view');
+            const progress = document.getElementById('progressIndicator');
             const btnPrev = document.getElementById('btnPrev');
             const btnNext = document.getElementById('btnNext');
-            const slideCounterText = document.getElementById('slideCounterText');
+            const counter = document.getElementById('slideCounter');
             
-            const notesDrawer = document.getElementById('notesDrawer');
+            const notesPanel = document.getElementById('notesPanel');
             const notesText = document.getElementById('notesText');
-            const btnNotesToggle = document.getElementById('btnNotesToggle');
-            const btnCloseNotes = document.getElementById('btnCloseNotes');
+            const btnNotes = document.getElementById('btnNotes');
             
-            const shortcutsModal = document.getElementById('shortcutsModal');
-            const btnShortcuts = document.getElementById('btnShortcuts');
-            const btnCloseShortcuts = document.getElementById('btnCloseShortcuts');
-            
+            const btnThemeToggle = document.getElementById('btnThemeToggle');
             const btnFullscreen = document.getElementById('btnFullscreen');
             const timerDisplay = document.getElementById('timerDisplay');
-            const btnTimerToggle = document.getElementById('btnTimerToggle');
-            
-            // Cronómetro
-            let timerSeconds = 0;
-            let timerInterval = null;
-            let timerRunning = false;
+            const btnTimer = document.getElementById('btnTimer');
 
-            // Generar botones de puntos
-            for (let i = 1; i <= TOTAL_SLIDES; i++) {
-                const dot = document.createElement('button');
-                dot.className = 'dot-btn' + (i === 1 ? ' active' : '');
-                dot.textContent = i;
-                dot.title = 'Ir a diapositiva ' + i;
-                dot.addEventListener('click', () => goToSlide(i));
-                dotsContainer.appendChild(dot);
+            // Crear píldoras de progreso
+            for (let i = 1; i <= TOTAL; i++) {
+                const pill = document.createElement('div');
+                pill.className = 'step-pill' + (i === 1 ? ' active' : '');
+                pill.title = 'Diapositiva ' + i;
+                pill.addEventListener('click', () => goTo(i));
+                progress.appendChild(pill);
             }
+            const pills = progress.querySelectorAll('.step-pill');
 
-            const dotButtons = dotsContainer.querySelectorAll('.dot-btn');
-
-            function updateSlideView() {
-                slides.forEach((slide, idx) => {
-                    const slideNum = idx + 1;
-                    if (slideNum === currentSlide) {
-                        slide.classList.add('active');
-                        // Cargar notas
-                        const notes = slide.getAttribute('data-notes') || 'Sin notas disponibles.';
-                        notesText.textContent = notes;
+            function update() {
+                slides.forEach((s, idx) => {
+                    const num = idx + 1;
+                    if (num === current) {
+                        s.classList.add('active');
+                        notesText.textContent = s.getAttribute('data-notes') || 'Sin notas.';
                     } else {
-                        slide.classList.remove('active');
+                        s.classList.remove('active');
                     }
                 });
 
-                dotButtons.forEach((dot, idx) => {
-                    dot.classList.toggle('active', (idx + 1) === currentSlide);
+                pills.forEach((p, idx) => {
+                    p.classList.toggle('active', (idx + 1) === current);
                 });
 
-                slideCounterText.textContent = `Diapositiva ${currentSlide} de ${TOTAL_SLIDES}`;
-                btnPrev.disabled = (currentSlide === 1);
-                btnNext.textContent = (currentSlide === TOTAL_SLIDES) ? 'Finalizar Exposición' : 'Siguiente →';
+                counter.textContent = `${current} / ${TOTAL}`;
+                btnPrev.disabled = (current === 1);
+                btnNext.textContent = (current === TOTAL) ? 'Finalizar' : 'Siguiente →';
             }
 
-            function goToSlide(num) {
+            function goTo(num) {
                 if (num < 1) num = 1;
-                if (num > TOTAL_SLIDES) num = TOTAL_SLIDES;
-                currentSlide = num;
-                updateSlideView();
+                if (num > TOTAL) num = TOTAL;
+                current = num;
+                update();
             }
 
-            function nextSlide() {
-                if (currentSlide < TOTAL_SLIDES) {
-                    goToSlide(currentSlide + 1);
-                }
-            }
-
-            function prevSlide() {
-                if (currentSlide > 1) {
-                    goToSlide(currentSlide - 1);
-                }
-            }
-
-            // Eventos de botones
-            btnNext.addEventListener('click', nextSlide);
-            btnPrev.addEventListener('click', prevSlide);
+            btnNext.addEventListener('click', () => { if (current < TOTAL) goTo(current + 1); });
+            btnPrev.addEventListener('click', () => { if (current > 1) goTo(current - 1); });
 
             // Notas
-            function toggleNotes() {
-                const isOpen = notesDrawer.classList.toggle('open');
-                btnNotesToggle.classList.toggle('active', isOpen);
-            }
-            btnNotesToggle.addEventListener('click', toggleNotes);
-            btnCloseNotes.addEventListener('click', toggleNotes);
-
-            // Atajos
-            btnShortcuts.addEventListener('click', () => shortcutsModal.classList.add('open'));
-            btnCloseShortcuts.addEventListener('click', () => shortcutsModal.classList.remove('open'));
-            shortcutsModal.addEventListener('click', (e) => {
-                if (e.target === shortcutsModal) shortcutsModal.classList.remove('open');
+            btnNotes.addEventListener('click', () => {
+                notesPanel.classList.toggle('open');
             });
 
-            // Pantalla completa
+            // Tema Claro / Oscuro
+            btnThemeToggle.addEventListener('click', () => {
+                document.body.classList.toggle('theme-light');
+            });
+
+            // Pantalla Completa
             btnFullscreen.addEventListener('click', () => {
                 if (!document.fullscreenElement) {
                     document.documentElement.requestFullscreen().catch(() => {});
@@ -1583,82 +1141,58 @@
             });
 
             // Cronómetro
-            function formatTime(sec) {
-                const m = Math.floor(sec / 60);
-                const s = sec % 60;
-                return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            let timerSec = 0;
+            let timerInt = null;
+            let timerOn = false;
+
+            function fmt(s) {
+                const m = Math.floor(s / 60);
+                const r = s % 60;
+                return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
             }
 
-            btnTimerToggle.addEventListener('click', () => {
-                if (!timerRunning) {
-                    timerRunning = true;
-                    btnTimerToggle.textContent = 'Pausar';
-                    btnTimerToggle.classList.add('active');
-                    timerInterval = setInterval(() => {
-                        timerSeconds++;
-                        timerDisplay.textContent = formatTime(timerSeconds);
+            btnTimer.addEventListener('click', () => {
+                if (!timerOn) {
+                    timerOn = true;
+                    btnTimer.textContent = 'Pausar';
+                    timerInt = setInterval(() => {
+                        timerSec++;
+                        timerDisplay.textContent = fmt(timerSec);
                     }, 1000);
                 } else {
-                    timerRunning = false;
-                    btnTimerToggle.textContent = 'Reanudar';
-                    btnTimerToggle.classList.remove('active');
-                    clearInterval(timerInterval);
+                    timerOn = false;
+                    btnTimer.textContent = 'Reanudar';
+                    clearInterval(timerInt);
                 }
             });
 
-            // Teclado
+            // Teclas
             window.addEventListener('keydown', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-                switch(e.key) {
-                    case 'ArrowRight':
-                    case 'Space':
-                    case 'PageDown':
-                        e.preventDefault();
-                        nextSlide();
-                        break;
-                    case 'ArrowLeft':
-                    case 'PageUp':
-                        e.preventDefault();
-                        prevSlide();
-                        break;
-                    case 'Home':
-                        e.preventDefault();
-                        goToSlide(1);
-                        break;
-                    case 'End':
-                        e.preventDefault();
-                        goToSlide(TOTAL_SLIDES);
-                        break;
-                    case 'f':
-                    case 'F':
-                        e.preventDefault();
-                        btnFullscreen.click();
-                        break;
-                    case 'n':
-                    case 'N':
-                        e.preventDefault();
-                        toggleNotes();
-                        break;
-                    case 't':
-                    case 'T':
-                        e.preventDefault();
-                        btnTimerToggle.click();
-                        break;
-                    case '?':
-                        e.preventDefault();
-                        shortcutsModal.classList.toggle('open');
-                        break;
-                    case 'Escape':
-                        shortcutsModal.classList.remove('open');
-                        notesDrawer.classList.remove('open');
-                        btnNotesToggle.classList.remove('active');
-                        break;
+                if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+                    e.preventDefault();
+                    if (current < TOTAL) goTo(current + 1);
+                } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                    e.preventDefault();
+                    if (current > 1) goTo(current - 1);
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    goTo(1);
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    goTo(TOTAL);
+                } else if (e.key === 'f' || e.key === 'F') {
+                    e.preventDefault();
+                    btnFullscreen.click();
+                } else if (e.key === 'n' || e.key === 'N') {
+                    e.preventDefault();
+                    btnNotes.click();
+                } else if (e.key === 't' || e.key === 'T') {
+                    e.preventDefault();
+                    btnTimer.click();
                 }
             });
 
-            // Iniciar vista inicial
-            updateSlideView();
+            update();
         })();
     </script>
 </body>

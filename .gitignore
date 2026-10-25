@@ -55,3 +55,6 @@ Thumbs.db
 desktop.ini
 *.log
 *.html
+!PRESENTACION_DEFENSA_SIS330.html
+!MANUAL_DEFENSA_COMPLETO_SIS330.html
+*.bak

@@ -21,6 +21,7 @@ import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaRouter
 import com.detectorpreventor.app.domain.MediaType
 import com.detectorpreventor.app.domain.ProcessedMediaPayload
+import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
@@ -324,6 +325,32 @@ class MainActivity : ComponentActivity() {
 
     private fun inspectNotification(notif: InterceptedNotification) {
         lifecycleScope.launch(Dispatchers.Default) {
+            if (notif.mediaType == MediaType.UNKNOWN) {
+                val fusionResult = notif.fusionResult ?: FusionResult(
+                    globalRiskPercentage = notif.riskScore,
+                    audioFraudProb = 0.0f,
+                    visionFraudProb = 0.0f,
+                    riskLevel = if (notif.riskScore >= 70f) RiskLevel.ALTO else if (notif.riskScore >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO,
+                    weightAudio = 0.5f,
+                    weightVision = 0.5f,
+                    diagnosticSummary = notif.text
+                )
+                val payload = ProcessedMediaPayload(
+                    mediaType = MediaType.UNKNOWN,
+                    audioSpectrogram = null,
+                    faceKeyframe = null,
+                    filename = "${notif.appName}: ${notif.sender}",
+                    faceDetected = false,
+                    discardReason = "Análisis contextual de texto y enlace web (sin archivo multimedia adjunto)"
+                )
+                lifecycleScope.launch(Dispatchers.Main) {
+                    currentPayload = payload
+                    currentFusionResult = fusionResult
+                    activeScreen = ScreenNav.Scanner
+                }
+                return@launch
+            }
+
             val sampleUri = Uri.parse("content://com.detectorpreventor.app.notifications/${notif.id}")
             val mime = when (notif.mediaType) {
                 MediaType.AUDIO_ONLY -> "audio/opus"
@@ -395,12 +422,25 @@ class MainActivity : ComponentActivity() {
             }
 
             val fusion = if (mediaType == MediaType.UNKNOWN) {
-                val score = if (isThreat) 95f else 4f
+                val hasUrl = text.contains("http://", ignoreCase = true) || text.contains("https://", ignoreCase = true)
+                val score = if (isThreat) {
+                    if (hasUrl) 88f else 95f
+                } else {
+                    if (hasUrl) 8f else 3f
+                }
                 val rLevel = if (isThreat) com.detectorpreventor.app.domain.RiskLevel.ALTO else com.detectorpreventor.app.domain.RiskLevel.BAJO
                 val desc = if (isThreat) {
-                    "Alerta crítica: Mensaje de número no registrado con patrones de urgencia/fraude."
+                    if (hasUrl) {
+                        "Alerta Phishing: Enlace externo con solicitud bancaria urgente o patrón de fraude."
+                    } else {
+                        "Alerta crítica: Mensaje de número no registrado con patrones de urgencia/fraude."
+                    }
                 } else {
-                    "Mensaje conversacional auténtico verificado."
+                    if (hasUrl) {
+                        "Enlace compartido verificado de plataforma conocida (TikTok / YouTube). Sin riesgo."
+                    } else {
+                        "Mensaje conversacional auténtico verificado."
+                    }
                 }
                 com.detectorpreventor.app.domain.FusionResult(
                     globalRiskPercentage = score,

@@ -1366,9 +1366,49 @@ fun NotificationsView(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text("Simular Texto Auténtico: Contacto Registrado", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
+                            MediaType.UNKNOWN,
+                            false,
+                            "Cristopher",
+                            "TikTok · Primeros Auxilios | https://vt.tiktok.com/ZSgQMJCSW/"
+                        )
+                        Toast.makeText(context, "Enlace web verificado (TikTok) interceptado", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.Link, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Enlace Verificado: TikTok / YouTube (Riesgo Bajo)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
+                            MediaType.UNKNOWN,
+                            true,
+                            "[No Registrado] +591 69876543",
+                            "URGENTE: Tu cuenta bancaria ha sido bloqueada. Realiza la verificacion aqui para evitar el cobro: https://banco-alerta-segura.xyz/login"
+                        )
+                        Toast.makeText(context, "Enlace con phishing y urgencia interceptado", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC026D3)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Enlace Phishing / Urgencia Bancaria (Riesgo Alto)", fontSize = 12.sp, color = Color.White)
                 }
             }
         }

@@ -229,6 +229,19 @@ object NotificationMediaCache {
         audioBitmap: Bitmap? = null,
         assetName: String? = null
     ) {
+        if (faceCache.size > 25) {
+            try {
+                val key = faceCache.keys().nextElement()
+                faceCache.remove(key)
+            } catch (e: Exception) {}
+        }
+        if (audioCache.size > 25) {
+            try {
+                val key = audioCache.keys().nextElement()
+                audioCache.remove(key)
+            } catch (e: Exception) {}
+        }
+
         faceBitmap?.let {
             faceCache[notifId] = it
             if (context != null) saveBitmapToCache(context, "face_$notifId.png", it)

@@ -176,13 +176,3 @@ cd android_app
   * $30.0\% - 69.9\% \rightarrow$ **Riesgo Medio (Alerta Moderada)**
   * $\ge 70.0\% \rightarrow$ **Riesgo Alto (Posible Deepfake / Estafa)**
 * **Regla de Descarte de Stickers y Contenido sin Rostro:** Los stickers (mensajes con contenido "sticker" o imágenes con MIME `image/webp`) y las imágenes sin rostro detectable son descartados antes de la inferencia pesada, ahorrando batería y CPU.
-
----
-
-## Material de Defensa y Exposición (SIS-330)
-
-* **Presentación Oficial de Defensa (10 Diapositivas):** [PRESENTACION_DEFENSA_SIS330.html](PRESENTACION_DEFENSA_SIS330.html)
-  * Diseñada con estética institucional sobria para proyección académica sin colores neón.
-  * Responde directamente a: **¿Qué hace el sistema?** y **¿En qué situaciones te ayuda?**
-  * Incluye atajos de teclado (`F` pantalla completa, `N` notas del orador, `T` cronómetro de exposición) y exportación limpia a PDF vía `Ctrl + P`.
-* **Manual Técnico y Pericial Completo:** [MANUAL_DEFENSA_COMPLETO_SIS330.html](MANUAL_DEFENSA_COMPLETO_SIS330.html)

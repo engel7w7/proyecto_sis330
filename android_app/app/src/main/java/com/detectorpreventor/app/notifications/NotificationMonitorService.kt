@@ -211,9 +211,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 combinedContent.contains("video", ignoreCase = true) ||
                 combinedContent.contains("vídeo", ignoreCase = true) ||
                 combinedContent.contains("videollamada", ignoreCase = true) ||
-                combinedContent.contains("videonota", ignoreCase = true) ||
-                combinedContent.contains("🎥") ||
-                combinedContent.contains("📹")
+                combinedContent.contains("videonota", ignoreCase = true)
 
         val durationRegex = Regex("""\b\d{1,2}:\d{2}\b""")
         val isAudioRelated = !isVideoRelated && (
@@ -223,8 +221,6 @@ class NotificationMonitorService : NotificationListenerService() {
                 combinedContent.contains("mensaje de voz", ignoreCase = true) ||
                 combinedContent.contains("voice message", ignoreCase = true) ||
                 combinedContent.contains("voice note", ignoreCase = true) ||
-                combinedContent.contains("🎤") ||
-                combinedContent.contains("🎵") ||
                 combinedContent.contains("PTT", ignoreCase = true) ||
                 (isWhatsApp && durationRegex.containsMatchIn(combinedContent))
         )
@@ -235,9 +231,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 combinedContent.contains("foto", ignoreCase = true) ||
                 combinedContent.contains("imagen", ignoreCase = true) ||
                 combinedContent.contains("photo", ignoreCase = true) ||
-                combinedContent.contains("image", ignoreCase = true) ||
-                combinedContent.contains("📷") ||
-                combinedContent.contains("🖼")
+                combinedContent.contains("image", ignoreCase = true)
         )
 
         val isTextRelated = !isVideoRelated && !isAudioRelated && !isImageRelated

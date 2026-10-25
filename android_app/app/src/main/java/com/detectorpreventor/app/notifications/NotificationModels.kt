@@ -161,7 +161,8 @@ object NotificationRepository {
         val existingIndex = currentList.indexOfFirst { existing ->
             existing.packageName == item.packageName &&
                     existing.sender.equals(item.sender, ignoreCase = true) &&
-                    kotlin.math.abs(item.timestamp - existing.timestamp) < DEDUPLICATION_WINDOW_MS
+                    existing.text.equals(item.text, ignoreCase = true) &&
+                    kotlin.math.abs(item.timestamp - existing.timestamp) < 4000L
         }
 
         if (existingIndex != -1) {
@@ -173,15 +174,8 @@ object NotificationRepository {
                 currentList[existingIndex] = item
                 _notifications.value = currentList
                 persistToStorage(currentList)
-                return
-            } else if (existingHasMedia && !newHasMedia) {
-                return
-            } else {
-                currentList[existingIndex] = item
-                _notifications.value = currentList
-                persistToStorage(currentList)
-                return
             }
+            return
         }
 
         val updatedList = (listOf(item) + currentList).take(MAX_SAVED_ITEMS)
@@ -196,16 +190,29 @@ object NotificationRepository {
 
     fun isPermissionGranted(context: Context): Boolean {
         val pkgName = context.packageName
-        val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
-        if (!flat.isNullOrEmpty()) {
-            val names = flat.split(":")
-            for (name in names) {
-                val cn = ComponentName.unflattenFromString(name)
-                if (cn != null && cn.packageName == pkgName) {
-                    return true
+
+        try {
+            val enabledListeners = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(context)
+            if (enabledListeners.contains(pkgName)) {
+                return true
+            }
+        } catch (e: Exception) {
+        }
+
+        try {
+            val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+            if (!flat.isNullOrEmpty()) {
+                val names = flat.split(":")
+                for (name in names) {
+                    val cn = ComponentName.unflattenFromString(name)
+                    if (cn != null && cn.packageName == pkgName) {
+                        return true
+                    }
                 }
             }
+        } catch (e: Exception) {
         }
+
         return false
     }
 }

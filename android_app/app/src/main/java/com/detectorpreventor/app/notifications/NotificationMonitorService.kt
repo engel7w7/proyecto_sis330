@@ -4,6 +4,7 @@ import android.app.Notification
 import android.content.ComponentName
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -22,6 +23,11 @@ import com.detectorpreventor.app.domain.RiskLevel
 import com.detectorpreventor.app.domain.RiskScorer
 import com.detectorpreventor.app.ml.AudioClassifier
 import com.detectorpreventor.app.ml.VisionClassifier
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
 
@@ -29,10 +35,18 @@ class NotificationMonitorService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "NotificationMonitor"
+
         fun ensureServiceBound(context: Context) {
             if (!NotificationRepository.isPermissionGranted(context)) {
                 NotificationRepository.setServiceConnected(false)
                 return
+            }
+
+            try {
+                val intent = Intent(context, NotificationMonitorService::class.java)
+                context.startService(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "No se pudo invocar startService: ${e.message}")
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -46,6 +60,9 @@ class NotificationMonitorService : NotificationListenerService() {
             }
         }
     }
+
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.Default + serviceJob)
 
     private var visionClassifier: VisionClassifier? = null
     private var audioClassifier: AudioClassifier? = null
@@ -62,6 +79,17 @@ class NotificationMonitorService : NotificationListenerService() {
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                requestRebind(ComponentName(this, NotificationMonitorService::class.java))
+            } catch (e: Exception) {
+            }
+        }
+        return START_STICKY
+    }
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "NotificationListenerService CONECTADO y vinculado por el SO.")
@@ -70,19 +98,24 @@ class NotificationMonitorService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        Log.w(TAG, "NotificationListenerService DESCONECTADO por el SO. Solicitando re-vinculacion...")
+        Log.w(TAG, "NotificationListenerService DESCONECTADO por el SO. Programando re-vinculacion...")
         NotificationRepository.setServiceConnected(false)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                requestRebind(ComponentName(this, NotificationMonitorService::class.java))
-            } catch (e: Exception) {
-                Log.e(TAG, "Fallo al solicitar requestRebind: ${e.message}")
+            serviceScope.launch {
+                delay(1500)
+                try {
+                    requestRebind(ComponentName(applicationContext, NotificationMonitorService::class.java))
+                    Log.i(TAG, "Auto-revinculacion completada tras desconexion.")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Fallo en auto-revinculacion: ${e.message}")
+                }
             }
         }
     }
 
     override fun onDestroy() {
+        serviceJob.cancel()
         try {
             visionClassifier?.close()
             audioClassifier?.close()
@@ -100,6 +133,16 @@ class NotificationMonitorService : NotificationListenerService() {
         super.onNotificationPosted(sbn)
         if (sbn == null || !NotificationRepository.isMonitoringActive.value) return
 
+        serviceScope.launch {
+            try {
+                processNotificationSafely(sbn)
+            } catch (t: Throwable) {
+                Log.e(TAG, "Excepcion no controlada en processNotificationSafely: ${t.message}", t)
+            }
+        }
+    }
+
+    private fun processNotificationSafely(sbn: StatusBarNotification) {
         val pkgName = sbn.packageName ?: return
         val isWhatsApp = pkgName.contains("whatsapp", ignoreCase = true)
         val isTelegram = pkgName.contains("telegram", ignoreCase = true)
@@ -207,31 +250,44 @@ class NotificationMonitorService : NotificationListenerService() {
         val hasPictureExtra = extras.get(Notification.EXTRA_PICTURE) != null ||
                 extras.get("android.pictureIcon") != null
 
-        val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
-                combinedContent.contains("video", ignoreCase = true) ||
-                combinedContent.contains("vídeo", ignoreCase = true) ||
-                combinedContent.contains("videollamada", ignoreCase = true) ||
-                combinedContent.contains("videonota", ignoreCase = true)
+        val urlPattern = Regex("""(?i)\b(?:https?://|www\.)\S+""")
+        val hasUrl = urlPattern.containsMatchIn(combinedContent) ||
+                combinedContent.contains("http://", ignoreCase = true) ||
+                combinedContent.contains("https://", ignoreCase = true)
 
-        val durationRegex = Regex("""\b\d{1,2}:\d{2}\b""")
-        val isAudioRelated = !isVideoRelated && (
-                (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.AUDIO_ONLY) ||
-                combinedContent.contains("audio", ignoreCase = true) ||
-                combinedContent.contains("nota de voz", ignoreCase = true) ||
-                combinedContent.contains("mensaje de voz", ignoreCase = true) ||
-                combinedContent.contains("voice message", ignoreCase = true) ||
-                combinedContent.contains("voice note", ignoreCase = true) ||
-                combinedContent.contains("PTT", ignoreCase = true) ||
-                (isWhatsApp && durationRegex.containsMatchIn(combinedContent))
+        val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
+                (!hasUrl && (
+                    combinedContent.contains("videollamada", ignoreCase = true) ||
+                    combinedContent.contains("videonota", ignoreCase = true) ||
+                    Regex("""(?i)\b(?:video|vídeo)\b""").containsMatchIn(combinedContent)
+                ))
+
+        val isDurationOnly = Regex("""^\s*\d{1,2}:\d{2}\s*$""").matches(text.trim())
+        val isVoiceNoteExplicit = Regex("""(?i)\b(?:mensaje de voz|nota de voz|voice message|voice note)\b""").containsMatchIn(combinedContent)
+        val isWhatsAppAudioHeader = !hasUrl && (
+            text.equals("Audio", ignoreCase = true) ||
+            text.startsWith("Audio (", ignoreCase = true) ||
+            Regex("""(?i)\b(?:audio)\s*\(\d{1,2}:\d{2}\)""").containsMatchIn(combinedContent)
         )
 
+        val isAudioRelated = !isVideoRelated && !hasUrl && (
+                (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.AUDIO_ONLY) ||
+                isDurationOnly ||
+                isVoiceNoteExplicit ||
+                isWhatsAppAudioHeader
+        )
+
+        val isPhotoExplicit = !hasUrl && (
+            text.equals("Foto", ignoreCase = true) ||
+            text.equals("Imagen", ignoreCase = true) ||
+            text.startsWith("Foto (", ignoreCase = true) ||
+            text.startsWith("Imagen (", ignoreCase = true) ||
+            combinedContent.contains("fotografía", ignoreCase = true)
+        )
         val isImageRelated = !isVideoRelated && !isAudioRelated && (
-                hasPictureExtra ||
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY) ||
-                combinedContent.contains("foto", ignoreCase = true) ||
-                combinedContent.contains("imagen", ignoreCase = true) ||
-                combinedContent.contains("photo", ignoreCase = true) ||
-                combinedContent.contains("image", ignoreCase = true)
+                (hasPictureExtra && !hasUrl) ||
+                isPhotoExplicit
         )
 
         val isTextRelated = !isVideoRelated && !isAudioRelated && !isImageRelated
@@ -273,7 +329,6 @@ class NotificationMonitorService : NotificationListenerService() {
         )
         val matchedFraudKeywords = fraudKeywords.filter { combinedContent.contains(it, ignoreCase = true) }
         val containsFraudKeyword = matchedFraudKeywords.isNotEmpty()
-        val suspiciousContext = containsFraudKeyword || isUnregistered
 
         val vClassifier = visionClassifier ?: VisionClassifier(applicationContext).also { visionClassifier = it }
         val aClassifier = audioClassifier ?: AudioClassifier(applicationContext).also { audioClassifier = it }
@@ -294,16 +349,14 @@ class NotificationMonitorService : NotificationListenerService() {
                 var realPicture = extractPictureFromNotification(notification, extras, isWhatsApp, isVideo = false)
                 if (realPicture == null && isWhatsApp) {
                     try {
-                        Thread.sleep(350)
+                        Thread.sleep(300)
                         realPicture = findRecentWhatsAppImage()
                     } catch (e: Exception) {
                     }
                 }
-                val pictureBitmap = realPicture
-                    ?: loadAssetBitmap(if (suspiciousContext) "samples/image_fake_face.jpg" else "samples/01_retrato_humano_real_1.jpg")
-                cachedFace = pictureBitmap
-                
+
                 if (realPicture != null) {
+                    cachedFace = realPicture
                     isFaceDetected = vClassifier.checkFacePresence(realPicture)
                     visionProb = if (isFaceDetected) {
                         Log.i(TAG, "Ejecutando inferencia TFLite real sobre imagen capturada de la notificacion...")
@@ -312,18 +365,39 @@ class NotificationMonitorService : NotificationListenerService() {
                         Log.i(TAG, "Descarte automatico: Notificacion de imagen sin rostro humano detectado.")
                         0.0f
                     }
+                    audioProb = null
+                    val isThreatScore = (visionProb ?: 0f) >= 0.5f
+                    displayText = if (!isFaceDetected) {
+                        "Fotografía recibida (Descarte automático: Sin rostro humano)"
+                    } else if (isThreatScore) {
+                        "Fotografía sospechosa (Alerta: Posible FaceSwap / Deepfake)"
+                    } else {
+                        "Fotografía entrante analizada (Rostro humano auténtico)"
+                    }
                 } else {
-                    visionProb = pictureBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "image_fake" else "image_real") }
-                }
-                audioProb = null
-                displayText = if (!isFaceDetected) {
-                    "Fotografía recibida (Descarte automático: Sin rostro humano)"
-                } else if (containsFraudKeyword) {
-                    "Fotografía sospechosa (Alerta: Posible FaceSwap)"
-                } else if (isUnregistered) {
-                    "Fotografía recibida de número no registrado"
-                } else {
-                    "Fotografía entrante recibida"
+                    cachedFace = null
+                    audioProb = null
+                    visionProb = null
+                    val risk = if (isUnregistered && containsFraudKeyword) 85f else if (isUnregistered) 15f else 4f
+                    val rLevel = if (risk >= 70f) RiskLevel.ALTO else if (risk >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO
+                    displayText = if (isUnregistered) {
+                        "Fotografía entrante de número no registrado (Pendiente de descarga)"
+                    } else {
+                        "Fotografía entrante recibida"
+                    }
+                    computedFusionResult = FusionResult(
+                        globalRiskPercentage = risk,
+                        audioFraudProb = 0.0f,
+                        visionFraudProb = 0.0f,
+                        riskLevel = rLevel,
+                        weightAudio = 0.4f,
+                        weightVision = 0.6f,
+                        diagnosticSummary = if (isUnregistered) {
+                            "Imagen recibida de remitente no registrado. En espera de apertura para inspección facial."
+                        } else {
+                            "Fotografía de contacto verificado."
+                        }
+                    )
                 }
             }
             isAudioRelated -> {
@@ -338,22 +412,42 @@ class NotificationMonitorService : NotificationListenerService() {
                         null
                     }
                 }
-                val specBitmap = realSpecBitmap
-                    ?: loadAssetBitmap(if (suspiciousContext) "samples/audio_fake_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png")
-                cachedAudio = specBitmap
-                audioProb = if (realSpecBitmap != null) {
+
+                if (realSpecBitmap != null) {
+                    cachedAudio = realSpecBitmap
                     Log.i(TAG, "Ejecutando inferencia TFLite real sobre espectrograma de audio recibido...")
-                    aClassifier.classifySpectrogram(realSpecBitmap, null)
+                    audioProb = aClassifier.classifySpectrogram(realSpecBitmap, null)
+                    visionProb = null
+                    val isThreatScore = (audioProb ?: 0f) >= 0.5f
+                    displayText = if (isThreatScore) {
+                        "Nota de voz sospechosa (Alerta: Posible clonación sintética)"
+                    } else {
+                        "Nota de voz entrante analizada (Voz humana auténtica)"
+                    }
                 } else {
-                    specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "audio_fake" else "audio_real") }
-                }
-                visionProb = null
-                displayText = if (containsFraudKeyword) {
-                    "Nota de voz sospechosa (Posible clonación / Deepfake)"
-                } else if (isUnregistered) {
-                    "Nota de voz entrante de número no registrado"
-                } else {
-                    "Nota de voz entrante recibida"
+                    cachedAudio = null
+                    audioProb = null
+                    visionProb = null
+                    val risk = if (isUnregistered && containsFraudKeyword) 85f else if (isUnregistered) 15f else 4f
+                    val rLevel = if (risk >= 70f) RiskLevel.ALTO else if (risk >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO
+                    displayText = if (isUnregistered) {
+                        "Nota de voz entrante de número no registrado (Pendiente de descarga)"
+                    } else {
+                        "Nota de voz entrante recibida"
+                    }
+                    computedFusionResult = FusionResult(
+                        globalRiskPercentage = risk,
+                        audioFraudProb = 0.0f,
+                        visionFraudProb = 0.0f,
+                        riskLevel = rLevel,
+                        weightAudio = 0.6f,
+                        weightVision = 0.4f,
+                        diagnosticSummary = if (isUnregistered) {
+                            "Nota de voz recibida de remitente no registrado. En espera de descarga de audio para inferencia espectral."
+                        } else {
+                            "Nota de voz de contacto verificado."
+                        }
+                    )
                 }
             }
             isVideoRelated -> {
@@ -361,7 +455,7 @@ class NotificationMonitorService : NotificationListenerService() {
                 var realVideoFrame = extractPictureFromNotification(notification, extras, isWhatsApp, isVideo = true)
                 if (realVideoFrame == null && isWhatsApp) {
                     try {
-                        Thread.sleep(400)
+                        Thread.sleep(300)
                         realVideoFrame = findRecentWhatsAppVideoFrame()
                     } catch (e: Exception) {
                     }
@@ -375,35 +469,56 @@ class NotificationMonitorService : NotificationListenerService() {
                         null
                     }
                 }
-                val faceBitmap = realVideoFrame
-                    ?: loadAssetBitmap(if (suspiciousContext) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg")
-                val specBitmap = realSpecBitmap
-                    ?: loadAssetBitmap(if (suspiciousContext) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png")
-                cachedFace = faceBitmap
-                cachedAudio = specBitmap
-                
-                if (realVideoFrame != null) {
-                    isFaceDetected = vClassifier.checkFacePresence(realVideoFrame)
-                }
 
-                visionProb = if (realVideoFrame != null) {
-                    Log.i(TAG, "Ejecutando inferencia TFLite real sobre keyframe de video capturado...")
-                    if (isFaceDetected) vClassifier.classifyFaceKeyframe(realVideoFrame, null, requireFaceDetection = true) else 0.0f
+                if (realVideoFrame != null || realSpecBitmap != null) {
+                    cachedFace = realVideoFrame
+                    cachedAudio = realSpecBitmap
+
+                    if (realVideoFrame != null) {
+                        isFaceDetected = vClassifier.checkFacePresence(realVideoFrame)
+                    }
+
+                    visionProb = if (realVideoFrame != null) {
+                        Log.i(TAG, "Ejecutando inferencia TFLite real sobre keyframe de video capturado...")
+                        if (isFaceDetected) vClassifier.classifyFaceKeyframe(realVideoFrame, null, requireFaceDetection = true) else 0.0f
+                    } else null
+
+                    audioProb = if (realSpecBitmap != null) {
+                        Log.i(TAG, "Ejecutando inferencia TFLite real sobre pista de audio de video capturado...")
+                        aClassifier.classifySpectrogram(realSpecBitmap, null)
+                    } else null
+
+                    val isThreatScore = (visionProb ?: 0f) >= 0.5f || (audioProb ?: 0f) >= 0.5f
+                    displayText = if (isThreatScore) {
+                        "Video sospechoso con posible alteración audiovisual"
+                    } else {
+                        "Video entrante analizado (Contenido audiovisual auténtico)"
+                    }
                 } else {
-                    faceBitmap?.let { vClassifier.classifyFaceKeyframe(it, if (suspiciousContext) "deepfake" else "video real") }
-                }
-                audioProb = if (realSpecBitmap != null) {
-                    Log.i(TAG, "Ejecutando inferencia TFLite real sobre pista de audio de video capturado...")
-                    aClassifier.classifySpectrogram(realSpecBitmap, null)
-                } else {
-                    specBitmap?.let { aClassifier.classifySpectrogram(it, if (suspiciousContext) "clonacion" else "video real") }
-                }
-                displayText = if (containsFraudKeyword) {
-                    "Video sospechoso con posible alteración audiovisual"
-                } else if (isUnregistered) {
-                    "Video recibido de número no registrado"
-                } else {
-                    "Video entrante recibido"
+                    cachedFace = null
+                    cachedAudio = null
+                    audioProb = null
+                    visionProb = null
+                    val risk = if (isUnregistered && containsFraudKeyword) 88f else if (isUnregistered) 18f else 5f
+                    val rLevel = if (risk >= 70f) RiskLevel.ALTO else if (risk >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO
+                    displayText = if (isUnregistered) {
+                        "Video entrante de número no registrado (Pendiente de descarga)"
+                    } else {
+                        "Video entrante recibido"
+                    }
+                    computedFusionResult = FusionResult(
+                        globalRiskPercentage = risk,
+                        audioFraudProb = 0.0f,
+                        visionFraudProb = 0.0f,
+                        riskLevel = rLevel,
+                        weightAudio = 0.5f,
+                        weightVision = 0.5f,
+                        diagnosticSummary = if (isUnregistered) {
+                            "Video recibido de remitente no registrado. En espera de apertura para análisis multimodal."
+                        } else {
+                            "Video recibido de contacto verificado."
+                        }
+                    )
                 }
             }
             isTextRelated -> {
@@ -411,25 +526,50 @@ class NotificationMonitorService : NotificationListenerService() {
                 audioProb = null
                 visionProb = null
                 val textSnippet = if (combinedContent.length > 70) combinedContent.take(67) + "..." else combinedContent
-                
+
+                val safeDomains = listOf(
+                    "tiktok.com", "youtube.com", "youtu.be", "instagram.com", "facebook.com",
+                    "fb.watch", "twitter.com", "x.com", "google.com", "whatsapp.com",
+                    "spotify.com", "wikipedia.org", "reddit.com", "pinterest.com",
+                    "linkedin.com", "github.com", "t.co", "wa.me"
+                )
+                val matchedSafeDomain = safeDomains.find { combinedContent.contains(it, ignoreCase = true) }
+
                 val globalScore: Float
                 val summaryDesc: String
-                if (isUnregistered && containsFraudKeyword) {
-                    globalScore = 95.0f
-                    summaryDesc = "Alerta crítica: Mensaje de número no registrado con términos de alta urgencia/fraude ('${matchedFraudKeywords.joinToString(", ")}')."
-                    displayText = "Texto sospechoso (No Registrado): \"$textSnippet\""
-                } else if (containsFraudKeyword) {
-                    globalScore = 78.0f
-                    summaryDesc = "Advertencia: Mensaje con palabras clave de solicitud financiera urgente ('${matchedFraudKeywords.joinToString(", ")}')."
-                    displayText = "Texto sospechoso: \"$textSnippet\""
-                } else if (isUnregistered) {
-                    globalScore = 22.0f
-                    summaryDesc = "Mensaje entrante de contacto no registrado en agenda. No se detectan patrones de fraude."
-                    displayText = "Mensaje de texto: \"$textSnippet\""
+
+                if (hasUrl) {
+                    if (containsFraudKeyword) {
+                        globalScore = 88.0f
+                        summaryDesc = "Alerta de Phishing: Enlace externo acompañado de términos de urgencia o fraude bancario ('${matchedFraudKeywords.joinToString(", ")}')."
+                        displayText = "Enlace sospechoso: \"$textSnippet\""
+                    } else if (matchedSafeDomain != null) {
+                        globalScore = if (isUnregistered) 8.0f else 2.0f
+                        summaryDesc = "Enlace compartido de plataforma verificada ($matchedSafeDomain). No presenta indicadores de riesgo."
+                        displayText = "Enlace verificado: \"$textSnippet\""
+                    } else {
+                        globalScore = if (isUnregistered) 18.0f else 6.0f
+                        summaryDesc = "Enlace web externo recibido. No contiene términos de extorsión ni fraude."
+                        displayText = "Enlace web: \"$textSnippet\""
+                    }
                 } else {
-                    globalScore = 4.0f
-                    summaryDesc = "Mensaje conversacional auténtico de contacto verificado."
-                    displayText = "Mensaje de texto: \"$textSnippet\""
+                    if (isUnregistered && containsFraudKeyword) {
+                        globalScore = 95.0f
+                        summaryDesc = "Alerta crítica: Mensaje de número no registrado con términos de alta urgencia/fraude ('${matchedFraudKeywords.joinToString(", ")}')."
+                        displayText = "Texto sospechoso (No Registrado): \"$textSnippet\""
+                    } else if (containsFraudKeyword) {
+                        globalScore = 75.0f
+                        summaryDesc = "Advertencia: Mensaje con palabras clave de solicitud financiera urgente ('${matchedFraudKeywords.joinToString(", ")}')."
+                        displayText = "Texto sospechoso: \"$textSnippet\""
+                    } else if (isUnregistered) {
+                        globalScore = 12.0f
+                        summaryDesc = "Mensaje entrante de contacto no registrado en agenda. Conversación normal sin patrones de fraude."
+                        displayText = "Mensaje de texto: \"$textSnippet\""
+                    } else {
+                        globalScore = 3.0f
+                        summaryDesc = "Mensaje conversacional auténtico de contacto verificado."
+                        displayText = "Mensaje de texto: \"$textSnippet\""
+                    }
                 }
 
                 val rLevel = when {

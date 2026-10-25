@@ -1,8 +1,12 @@
-# Detector Móvil Multimodal de Estafas Digitales (Edge AI)
+# Detector Móvil Multimodal de Estafas Digitales mediante IA Explicable (XAI) y Procesamiento en el Borde (Edge AI)
 
-**Materia:** SIS-330 (Desarrollo de Aplicaciones Inteligentes)  
+**Universidad:** Universidad Mayor Real y Pontificia de San Francisco Xavier de Chuquisaca  
+**Facultad:** Facultad de Ciencias y Tecnología  
+**Carrera:** Ingeniería en Ciencias de la Computación  
+**Materia:** SIS-330 (Desarrollo de Aplicaciones Inteligentes) - Grupo 1  
+**Universitario:** Romero Morales Jhojan Erick  
 **Docente:** Ing. Pacheco Lora Carlos Walter  
-**Universidad:** Universidad San Francisco Xavier de Chuquisaca  
+**Gestión:** 2026 | Sucre – Bolivia  
 
 ---
 
@@ -163,7 +167,9 @@ cd android_app
 ### 2. Lógica de Fusión (`RiskScorer.kt`)
 
 * **Score-Level Fusion Ponderado:**
-  $$\text{Score Global} = (0.60 \times P_{\text{audio}}) + (0.40 \times P_{\text{visión}})$$
+  $$\text{Score Global} = (0.55 \times P_{\text{audio}}) + (0.45 \times P_{\text{visión}})$$
+* **Regla de 3/5 para Video:** Para la detección sostenida en fotogramas de video, basta con que la pista de audio sea clasificada como clonada o que la mayoría de los frames (al menos 3 de 5) presenten alteraciones visuales para emitir una alerta crítica de Deepfake.
+* **Explicabilidad XAI (Grad-CAM):** Extracción de gradientes de la última capa convolucional para generar mapas térmicos cromáticos (Saliency Heatmaps) que justifican visualmente ante el usuario la detección de anomalías.
 * **Rebalanceo Unimodal Dinámico:** Si el contenido recibido es únicamente audio o únicamente imagen, el peso del canal presente se ajusta automáticamente al 100% (1.0) para garantizar una evaluación precisa sin penalizaciones por canal ausente.
 * **Umbrales de Categorización de Riesgo:**
   * $< 30.0\% \rightarrow$ **Riesgo Bajo (Contenido Auténtico)**

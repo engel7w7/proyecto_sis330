@@ -869,19 +869,55 @@ fun SystemInfoView() {
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text(
-            text = "Arquitectura MLOps & Edge AI",
-            color = TextPrimary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Especificaciones técnicas de los modelos e infraestructura local",
-            color = TextSecondary,
-            fontSize = 12.sp
-        )
+        Card(
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, PrimaryIndigo.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "UNIVERSIDAD MAYOR REAL Y PONTIFICIA DE SAN FRANCISCO XAVIER DE CHUQUISACA",
+                    color = AccentCyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 15.sp
+                )
+                Text(
+                    text = "Facultad de Ciencias y Tecnología",
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Carrera de Ingeniería en Ciencias de la Computación",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
 
-        Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = PrimaryIndigo.copy(alpha = 0.3f), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "Detector Móvil Multimodal de Estafas Digitales mediante IA Explicable (XAI) y Procesamiento en el Borde (Edge AI)",
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 20.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("• Materia: SIS 330 (Desarrollo de Aplicaciones Inteligentes) - Grupo 1", fontSize = 11.sp, color = TextSecondary)
+                Text("• Universitario: Romero Morales Jhojan Erick", fontSize = 11.sp, color = AccentCyan, fontWeight = FontWeight.SemiBold)
+                Text("• Docente: Ing. Pacheco Lora Carlos Walter", fontSize = 11.sp, color = TextSecondary)
+                Text("• Gestión: 2026 | Sucre – Bolivia", fontSize = 11.sp, color = TextSecondary)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -898,17 +934,27 @@ fun SystemInfoView() {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Modelos Expertos Cuantizados (Assets Locales)",
+                        text = "Enjambre de Modelos Expertos (Edge AI INT8)",
                         color = PrimaryIndigo,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Experto Audio: MobileNetV3-Small INT8 (6.2 MB)", fontSize = 12.sp, color = TextPrimary)
-                Text("• Experto Visión: EfficientNet-B0 INT8 (16.0 MB)", fontSize = 12.sp, color = TextPrimary)
-                Text("• Aceleración hardware: TFLite GPU Delegate / 4 hilos CPU", fontSize = 12.sp, color = TextPrimary)
-                Text("• Consumo de Memoria RAM: < 200 MB garantizado", fontSize = 12.sp, color = TextPrimary)
+                Text("• Experto Audio: MobileNetV3-Small INT8 (6.2 MB)", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text("  Entrada: Espectrograma térmico Mel Magma RGB 224x224x3 (STFT).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Dataset: ASVspoof 2019 LA (7,870 muestras de síntesis vocal Zero-Shot).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Rendimiento: 81.79% Accuracy | 78.28% Precision | 99.96% Recall | 87.80% F1.", fontSize = 11.sp, color = AccentCyan)
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("• Experto Visión: EfficientNet-B0 INT8 (16.0 MB)", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text("  Entrada: Keyframe facial centrado con margen pericial del 15% (224x224x3).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Dataset: CIFAKE y FaceForensics++ (22,086 fotogramas con Data Augmentation).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Rendimiento: 97.17% Accuracy | 95.40% Precision | 96.25% Recall | 95.82% F1.", fontSize = 11.sp, color = AccentCyan)
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("• Orquestador de Video: BlazeFace + Extracción STFT paralela.", fontSize = 11.sp, color = TextSecondary)
+                Text("• Capa XAI: Grad-CAM dinámico cargado desde gradcam_weights.bin (1280 canales).", fontSize = 11.sp, color = TextSecondary)
             }
         }
 
@@ -929,17 +975,50 @@ fun SystemInfoView() {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Resultados Oficiales de Entrenamiento (GPU CUDA)",
+                        text = "Fusión Tardía (Score-Level Fusion) & Reglas",
                         color = PrimaryIndigo,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Muestras Totales de Entrenamiento: 123,303 muestras", fontSize = 12.sp, color = TextPrimary)
-                Text("• Precisión Experto Visión: 97.17% Accuracy | 95.82% F1-Score", fontSize = 12.sp, color = TextPrimary)
-                Text("• Sensibilidad Experto Audio: 99.96% Recall | 87.80% F1-Score", fontSize = 12.sp, color = TextPrimary)
-                Text("• Algoritmo de Fusión: Score-Level Fusion (w_a = 0.6, w_v = 0.4)", fontSize = 12.sp, color = TextPrimary)
+                Text("• Ponderación Multimodal: 55% Audio (w_a = 0.55) + 45% Visión (w_v = 0.45)", fontSize = 12.sp, color = TextPrimary)
+                Text("• Regla de 3/5 en Video: Alerta crítica ante clonación de audio o mayoría de frames manipulados.", fontSize = 11.sp, color = TextSecondary)
+                Text("• Rebalanceo Unimodal: Adaptación dinámica al 100% cuando solo existe un canal.", fontSize = 11.sp, color = TextSecondary)
+                Text("• Descarte Automático sin Rostro: Neutralización visual a 0.0% ante ausencia facial.", fontSize = 11.sp, color = TextSecondary)
+                Text("• Umbrales de Riesgo: Bajo (<30%), Medio (30%-69%), Alto (>=70%).", fontSize = 11.sp, color = TextSecondary)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Métricas de Perfilado Edge (Android Profiler)",
+                        color = AccentCyan,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("• Consumo de Memoria RAM: ~145 MB (límite estricto < 200 MB cumplido)", fontSize = 11.sp, color = TextPrimary)
+                Text("• Tiempo de Inferencia: 3.2 segundos promedio (requisito < 5.0 s cumplido)", fontSize = 11.sp, color = TextPrimary)
+                Text("• Uso de CPU: < 35% con aceleración TFLite GPU Delegate / 4 hilos CPU", fontSize = 11.sp, color = TextPrimary)
+                Text("• Impacto Energético: Ligero / Medio, previniendo sobrecalentamiento", fontSize = 11.sp, color = TextPrimary)
+                Text("• Privacidad por Diseño: Procesamiento 100% local sin servidores externos (ISO/IEC 27400 y NIST)", fontSize = 11.sp, color = TextPrimary)
             }
         }
     }

@@ -290,7 +290,10 @@ class NotificationMonitorService : NotificationListenerService() {
                 isPhotoExplicit
         )
 
-        val isTextRelated = !isVideoRelated && !isAudioRelated && !isImageRelated
+        if (!isVideoRelated && !isAudioRelated && !isImageRelated) {
+            Log.d(TAG, "Notificacion descartada: Mensaje de texto o enlace sin contenido biometrico audiovisual.")
+            return
+        }
 
         val candidateSender = when {
             !messageSender.isNullOrBlank() && !messageSender.equals("WhatsApp", ignoreCase = true) -> messageSender
@@ -319,16 +322,6 @@ class NotificationMonitorService : NotificationListenerService() {
             isTelegram -> "Telegram"
             else -> "Mensajeria"
         }
-
-        val fraudKeywords = listOf(
-            "urgente", "deposito", "depósito", "transferencia", "dinero", "banco",
-            "tarjeta", "ganaste", "premio", "cuenta bloqueada", "mama", "mamá",
-            "papa", "papá", "hijo", "ayuda", "familiar", "codigo", "código",
-            "verificacion", "verificación", "nip", "clave", "emergencia", "prestamo", "préstamo",
-            "bloqueo", "soporte", "contraseña", "banca móvil", "banca movil"
-        )
-        val matchedFraudKeywords = fraudKeywords.filter { combinedContent.contains(it, ignoreCase = true) }
-        val containsFraudKeyword = matchedFraudKeywords.isNotEmpty()
 
         val vClassifier = visionClassifier ?: VisionClassifier(applicationContext).also { visionClassifier = it }
         val aClassifier = audioClassifier ?: AudioClassifier(applicationContext).also { audioClassifier = it }
@@ -378,25 +371,15 @@ class NotificationMonitorService : NotificationListenerService() {
                     cachedFace = null
                     audioProb = null
                     visionProb = null
-                    val risk = if (isUnregistered && containsFraudKeyword) 85f else if (isUnregistered) 15f else 4f
-                    val rLevel = if (risk >= 70f) RiskLevel.ALTO else if (risk >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO
-                    displayText = if (isUnregistered) {
-                        "Fotografía entrante de número no registrado (Pendiente de descarga)"
-                    } else {
-                        "Fotografía entrante recibida"
-                    }
+                    displayText = "Fotografía entrante (Pendiente de descarga)"
                     computedFusionResult = FusionResult(
-                        globalRiskPercentage = risk,
+                        globalRiskPercentage = 0.0f,
                         audioFraudProb = 0.0f,
                         visionFraudProb = 0.0f,
-                        riskLevel = rLevel,
-                        weightAudio = 0.4f,
-                        weightVision = 0.6f,
-                        diagnosticSummary = if (isUnregistered) {
-                            "Imagen recibida de remitente no registrado. En espera de apertura para inspección facial."
-                        } else {
-                            "Fotografía de contacto verificado."
-                        }
+                        riskLevel = RiskLevel.BAJO,
+                        weightAudio = 0.0f,
+                        weightVision = 1.0f,
+                        diagnosticSummary = "Fotografía recibida. En espera de apertura para inspección facial con EfficientNet-B0."
                     )
                 }
             }
@@ -428,25 +411,15 @@ class NotificationMonitorService : NotificationListenerService() {
                     cachedAudio = null
                     audioProb = null
                     visionProb = null
-                    val risk = if (isUnregistered && containsFraudKeyword) 85f else if (isUnregistered) 15f else 4f
-                    val rLevel = if (risk >= 70f) RiskLevel.ALTO else if (risk >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO
-                    displayText = if (isUnregistered) {
-                        "Nota de voz entrante de número no registrado (Pendiente de descarga)"
-                    } else {
-                        "Nota de voz entrante recibida"
-                    }
+                    displayText = "Nota de voz entrante (Pendiente de descarga)"
                     computedFusionResult = FusionResult(
-                        globalRiskPercentage = risk,
+                        globalRiskPercentage = 0.0f,
                         audioFraudProb = 0.0f,
                         visionFraudProb = 0.0f,
-                        riskLevel = rLevel,
-                        weightAudio = 0.6f,
-                        weightVision = 0.4f,
-                        diagnosticSummary = if (isUnregistered) {
-                            "Nota de voz recibida de remitente no registrado. En espera de descarga de audio para inferencia espectral."
-                        } else {
-                            "Nota de voz de contacto verificado."
-                        }
+                        riskLevel = RiskLevel.BAJO,
+                        weightAudio = 1.0f,
+                        weightVision = 0.0f,
+                        diagnosticSummary = "Nota de voz recibida. En espera de descarga para inferencia espectral con MobileNetV3-Small."
                     )
                 }
             }
@@ -499,102 +472,36 @@ class NotificationMonitorService : NotificationListenerService() {
                     cachedAudio = null
                     audioProb = null
                     visionProb = null
-                    val risk = if (isUnregistered && containsFraudKeyword) 88f else if (isUnregistered) 18f else 5f
-                    val rLevel = if (risk >= 70f) RiskLevel.ALTO else if (risk >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO
-                    displayText = if (isUnregistered) {
-                        "Video entrante de número no registrado (Pendiente de descarga)"
-                    } else {
-                        "Video entrante recibido"
-                    }
+                    displayText = "Video entrante (Pendiente de descarga)"
                     computedFusionResult = FusionResult(
-                        globalRiskPercentage = risk,
+                        globalRiskPercentage = 0.0f,
                         audioFraudProb = 0.0f,
                         visionFraudProb = 0.0f,
-                        riskLevel = rLevel,
-                        weightAudio = 0.5f,
-                        weightVision = 0.5f,
-                        diagnosticSummary = if (isUnregistered) {
-                            "Video recibido de remitente no registrado. En espera de apertura para análisis multimodal."
-                        } else {
-                            "Video recibido de contacto verificado."
-                        }
+                        riskLevel = RiskLevel.BAJO,
+                        weightAudio = 0.55f,
+                        weightVision = 0.45f,
+                        diagnosticSummary = "Video recibido. En espera de apertura para análisis multimodal y regla de 3/5."
                     )
                 }
-            }
-            isTextRelated -> {
-                mediaType = MediaType.UNKNOWN
-                audioProb = null
-                visionProb = null
-                val textSnippet = if (combinedContent.length > 70) combinedContent.take(67) + "..." else combinedContent
-
-                val safeDomains = listOf(
-                    "tiktok.com", "youtube.com", "youtu.be", "instagram.com", "facebook.com",
-                    "fb.watch", "twitter.com", "x.com", "google.com", "whatsapp.com",
-                    "spotify.com", "wikipedia.org", "reddit.com", "pinterest.com",
-                    "linkedin.com", "github.com", "t.co", "wa.me"
-                )
-                val matchedSafeDomain = safeDomains.find { combinedContent.contains(it, ignoreCase = true) }
-
-                val globalScore: Float
-                val summaryDesc: String
-
-                if (hasUrl) {
-                    if (containsFraudKeyword) {
-                        globalScore = 88.0f
-                        summaryDesc = "Alerta de Phishing: Enlace externo acompañado de términos de urgencia o fraude bancario ('${matchedFraudKeywords.joinToString(", ")}')."
-                        displayText = "Enlace sospechoso: \"$textSnippet\""
-                    } else if (matchedSafeDomain != null) {
-                        globalScore = if (isUnregistered) 8.0f else 2.0f
-                        summaryDesc = "Enlace compartido de plataforma verificada ($matchedSafeDomain). No presenta indicadores de riesgo."
-                        displayText = "Enlace verificado: \"$textSnippet\""
-                    } else {
-                        globalScore = if (isUnregistered) 18.0f else 6.0f
-                        summaryDesc = "Enlace web externo recibido. No contiene términos de extorsión ni fraude."
-                        displayText = "Enlace web: \"$textSnippet\""
-                    }
-                } else {
-                    if (isUnregistered && containsFraudKeyword) {
-                        globalScore = 95.0f
-                        summaryDesc = "Alerta crítica: Mensaje de número no registrado con términos de alta urgencia/fraude ('${matchedFraudKeywords.joinToString(", ")}')."
-                        displayText = "Texto sospechoso (No Registrado): \"$textSnippet\""
-                    } else if (containsFraudKeyword) {
-                        globalScore = 75.0f
-                        summaryDesc = "Advertencia: Mensaje con palabras clave de solicitud financiera urgente ('${matchedFraudKeywords.joinToString(", ")}')."
-                        displayText = "Texto sospechoso: \"$textSnippet\""
-                    } else if (isUnregistered) {
-                        globalScore = 12.0f
-                        summaryDesc = "Mensaje entrante de contacto no registrado en agenda. Conversación normal sin patrones de fraude."
-                        displayText = "Mensaje de texto: \"$textSnippet\""
-                    } else {
-                        globalScore = 3.0f
-                        summaryDesc = "Mensaje conversacional auténtico de contacto verificado."
-                        displayText = "Mensaje de texto: \"$textSnippet\""
-                    }
-                }
-
-                val rLevel = when {
-                    globalScore >= 70f -> RiskLevel.ALTO
-                    globalScore >= 35f -> RiskLevel.MEDIO
-                    else -> RiskLevel.BAJO
-                }
-                computedFusionResult = FusionResult(
-                    globalRiskPercentage = globalScore,
-                    audioFraudProb = 0.0f,
-                    visionFraudProb = 0.0f,
-                    riskLevel = rLevel,
-                    weightAudio = 0.5f,
-                    weightVision = 0.5f,
-                    diagnosticSummary = summaryDesc
-                )
             }
             else -> return
         }
 
-        val fusionResult = computedFusionResult ?: RiskScorer.calculateGlobalRisk(
-            audioProb = audioProb, 
-            visionProb = visionProb, 
-            isFaceDetected = isFaceDetected
-        )
+        val fusionResult = computedFusionResult ?: if (mediaType == MediaType.VIDEO_MULTIMODAL) {
+            RiskScorer.calculateVideoRisk(
+                audioProb = audioProb,
+                frameProbs = listOfNotNull(visionProb),
+                isFaceDetected = isFaceDetected
+            )
+        } else {
+            RiskScorer.calculateGlobalRisk(
+                audioProb = audioProb,
+                visionProb = visionProb,
+                customWeightAudio = 0.55f,
+                customWeightVision = 0.45f,
+                isFaceDetected = isFaceDetected
+            )
+        }
 
         val item = InterceptedNotification(
             id = UUID.randomUUID().toString(),

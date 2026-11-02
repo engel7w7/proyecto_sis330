@@ -1,8 +1,3 @@
-"""
-Módulo de evaluación detallada de modelos expertos de audio y visión.
-Genera un reporte de métricas cuantitativas (BCE Loss, Accuracy, Precision, Recall, F1-Score).
-"""
-
 import os
 import json
 import torch
@@ -15,7 +10,6 @@ from src.models.dataloaders import obtener_dataloaders
 from src.training.train_expertos import calcular_metricas
 
 def evaluar_modelo_detallado(modelo, loader, model_path, nombre="Modelo"):
-    """Evalúa las predicciones del modelo en el conjunto de validación y retorna el diccionario de métricas."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     modelo = modelo.to(device)
     modelo.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
@@ -59,7 +53,6 @@ def evaluar_modelo_detallado(modelo, loader, model_path, nombre="Modelo"):
     }
 
 def evaluar_expertos():
-    """Ejecuta la evaluación en los modelos de audio y visión guardados y escribe evaluacion_final_metricas.json."""
     dir_audio = os.path.join(DATA_PROCESSED_DIR, 'audio')
     dir_vision = os.path.join(DATA_PROCESSED_DIR, 'vision')
 
@@ -84,4 +77,3 @@ def evaluar_expertos():
 
 if __name__ == "__main__":
     evaluar_expertos()
-

@@ -1,9 +1,3 @@
-"""
-Generador de Gráficas de Telemetría de Hardware (Android Studio Profiler Style)
-Para Documentación de Tesis: Rendimiento en Dispositivo Móvil
-Métricas: CPU < 35%, RAM ~ 145 MB, Energy: Light / Medium
-"""
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -52,11 +46,10 @@ fig, ax = plt.subplots(figsize=(10, 4.8), dpi=300)
 fig.patch.set_facecolor('#1E1F22')
 ax.set_facecolor('#2B2D30')
 
-# Componentes de memoria en MB
-native_mem = 68.0 + 2.0 * np.sin(time_pts)  # TFLite C++ runtime
-java_mem = 38.0 + 1.5 * np.cos(time_pts * 0.8) # Compose / Android runtime
-graphics_mem = 24.0 + np.zeros_like(time_pts) # GPU buffers
-stack_code = 15.0 + np.zeros_like(time_pts)   # Stack & Code
+native_mem = 68.0 + 2.0 * np.sin(time_pts)
+java_mem = 38.0 + 1.5 * np.cos(time_pts * 0.8)
+graphics_mem = 24.0 + np.zeros_like(time_pts)
+stack_code = 15.0 + np.zeros_like(time_pts)
 
 ax.stackplot(time_pts, native_mem, java_mem, graphics_mem, stack_code,
              labels=['Native / TFLite (68 MB)', 'Java / Kotlin Heap (38 MB)', 'Graphics (24 MB)', 'Stack & Code (15 MB)'],
@@ -84,15 +77,13 @@ plt.tight_layout()
 plt.savefig(os.path.join(OUTPUT_DIR, "captura_profiler_ram.png"), dpi=300, facecolor=fig.get_facecolor())
 plt.close()
 
-
 fig, ax = plt.subplots(figsize=(10, 4.8), dpi=300)
 fig.patch.set_facecolor('#1E1F22')
 ax.set_facecolor('#2B2D30')
 
-# Nivel de energía continuo: 1 = Light, 2 = Medium, 3 = Heavy
-energy_levels = np.ones(len(time_pts)) # Light basal
-# Pulso durante la inferencia
-energy_levels[(time_pts >= 4.6) & (time_pts <= 5.4)] = 2 # Medium transitorio
+energy_levels = np.ones(len(time_pts))
+
+energy_levels[(time_pts >= 4.6) & (time_pts <= 5.4)] = 2
 
 bar_colors = ['#238636' if lvl == 1 else '#D29922' for lvl in energy_levels]
 ax.bar(time_pts, energy_levels, width=(time_pts[1] - time_pts[0]), color=bar_colors, edgecolor='none', alpha=0.9)

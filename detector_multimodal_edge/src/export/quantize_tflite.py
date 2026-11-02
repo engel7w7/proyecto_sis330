@@ -1,7 +1,3 @@
-"""
-Exportador y cuantizador de modelos PyTorch a TorchScript / TFLite INT8 para inferencia Edge en Android.
-"""
-
 import os
 import sys
 import shutil
@@ -22,10 +18,6 @@ from src.models.audio_net import MobileNetV3Audio
 from src.models.vision_net import EfficientNetVision
 
 def exportar_a_tflite_int8(modelo, pth_path, tflite_path):
-    """
-    Convierte un checkpoint de PyTorch a formato TorchScript y TFLite optimizado.
-    Copia los modelos generados a la carpeta de assets de la aplicación Android.
-    """
     if not os.path.exists(pth_path):
         print(f"[Error Export] Checkpoint no encontrado: {pth_path}")
         return False
@@ -36,13 +28,11 @@ def exportar_a_tflite_int8(modelo, pth_path, tflite_path):
 
     sample_input = torch.randn(1, 3, 224, 224)
 
-    # Exportar TorchScript optimizado
     ts_path = tflite_path.replace('.tflite', '.pt')
     traced_model = torch.jit.trace(modelo, sample_input)
     traced_model.save(ts_path)
     print(f" -> TorchScript exportado a: {ts_path}")
 
-    # Intentar conversión a TFLite
     try:
         import ai_edge_torch
         edge_model = ai_edge_torch.convert(modelo, (sample_input,))
@@ -51,7 +41,6 @@ def exportar_a_tflite_int8(modelo, pth_path, tflite_path):
     except Exception as e:
         print(f" -> Fallback ONNX/TorchScript utilizado: {ts_path} ({e})")
 
-    # Copiar archivo compilado a los assets de Android
     assets_dir = os.path.abspath(os.path.join(PROJECT_ROOT, "..", "android_app", "app", "src", "main", "assets"))
     os.makedirs(assets_dir, exist_ok=True)
     if os.path.exists(tflite_path):
@@ -62,7 +51,6 @@ def exportar_a_tflite_int8(modelo, pth_path, tflite_path):
         print(f" -> Modelo TorchScript copiado a la app Android: {assets_dir}")
 
 def exportar_todos():
-    """Ejecuta la exportación de los modelos expertos de audio y visión."""
     print("Iniciando exportación de modelos...")
     net_audio = MobileNetV3Audio(pretrained=False)
     exportar_a_tflite_int8(net_audio, AUDIO_MODEL_PTH, AUDIO_TFLITE_PATH)
@@ -72,4 +60,3 @@ def exportar_todos():
 
 if __name__ == "__main__":
     exportar_todos()
-

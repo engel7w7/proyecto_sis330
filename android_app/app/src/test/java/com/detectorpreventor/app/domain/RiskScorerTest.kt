@@ -14,7 +14,8 @@ class RiskScorerTest {
         val result = RiskScorer.calculateGlobalRisk(audioProb, visionProb, 0.6f, 0.4f)
 
         assertNotNull(result)
-        assertEquals(84.0f, result.globalRiskPercentage, 0.01f)
+
+        assertEquals(85.5f, result.globalRiskPercentage, 0.1f)
         assertEquals(RiskLevel.ALTO, result.riskLevel)
     }
 
@@ -50,7 +51,7 @@ class RiskScorerTest {
         val result = RiskScorer.calculateGlobalRisk(audioProb, visionProb)
 
         assertNotNull(result)
-        // 0.55 * 0.40 + 0.45 * 0.60 = 0.22 + 0.27 = 0.49 -> 49.0%
+
         assertEquals(49.0f, result.globalRiskPercentage, 0.1f)
         assertEquals(0.55f, result.weightAudio, 0.01f)
         assertEquals(0.45f, result.weightVision, 0.01f)

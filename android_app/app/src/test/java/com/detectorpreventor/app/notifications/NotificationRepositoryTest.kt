@@ -1,4 +1,4 @@
-package com.detectorpreventor.app.notifications
+﻿package com.detectorpreventor.app.notifications
 
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaType
@@ -133,5 +133,73 @@ class NotificationRepositoryTest {
 
         NotificationRepository.clearNotifications()
         assertTrue(NotificationRepository.notifications.value.isEmpty())
+    }
+
+    @Test
+    fun testUpdateExistingNotification() {
+        val initial = InterceptedNotification(
+            id = "notif-pending-1",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Banco Union",
+            text = "Descarga de audio pendiente...",
+            timestamp = 1000L,
+            mediaType = MediaType.AUDIO_ONLY,
+            riskScore = 0f,
+            isThreat = false
+        )
+        NotificationRepository.addNotification(initial)
+        assertEquals(1, NotificationRepository.notifications.value.size)
+        assertEquals("Descarga de audio pendiente...", NotificationRepository.notifications.value[0].text)
+
+        val updated = initial.copy(
+            text = "Nota de voz analizada (0:15)",
+            riskScore = 91.5f,
+            isThreat = true
+        )
+        NotificationRepository.updateNotification(updated)
+
+        assertEquals(1, NotificationRepository.notifications.value.size)
+        val current = NotificationRepository.notifications.value[0]
+        assertEquals("Nota de voz analizada (0:15)", current.text)
+        assertEquals(91.5f, current.riskScore, 0.01f)
+        assertTrue(current.isThreat)
+    }
+
+    @Test
+    fun testAddNotificationReplacesPendingNotificationForSameSenderAndType() {
+        val now = System.currentTimeMillis()
+        val pending = InterceptedNotification(
+            id = "pending-id-1",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Tia Maria",
+            text = "Nota de voz (descarga pendiente)",
+            timestamp = now - 5000L,
+            mediaType = MediaType.AUDIO_ONLY,
+            riskScore = 0f,
+            isThreat = false
+        )
+        NotificationRepository.addNotification(pending)
+        assertEquals(1, NotificationRepository.notifications.value.size)
+        assertTrue(NotificationRepository.notifications.value[0].text.contains("pendiente"))
+
+        val analyzed = InterceptedNotification(
+            id = "analyzed-id-2",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Tia Maria",
+            text = "Nota de voz (0:12)",
+            timestamp = now,
+            mediaType = MediaType.AUDIO_ONLY,
+            riskScore = 88.0f,
+            isThreat = true
+        )
+        NotificationRepository.addNotification(analyzed)
+
+        assertEquals(1, NotificationRepository.notifications.value.size)
+        assertEquals("analyzed-id-2", NotificationRepository.notifications.value[0].id)
+        assertEquals(88.0f, NotificationRepository.notifications.value[0].riskScore, 0.01f)
+        assertTrue(NotificationRepository.notifications.value[0].isThreat)
     }
 }

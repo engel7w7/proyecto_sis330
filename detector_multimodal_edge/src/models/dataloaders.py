@@ -1,7 +1,3 @@
-"""
-Cargadores de datos y transformaciones de imágenes/espectrogramas para entrenamiento y validación.
-"""
-
 import os
 from PIL import Image
 import torch
@@ -24,9 +20,6 @@ transform_val = transforms.Compose([
 ])
 
 class MultimodalDeepfakeDataset(Dataset):
-    """
-    Dataset genérico para cargar imágenes y espectrogramas desde carpetas 'real' y 'fake'.
-    """
     def __init__(self, data_dir, transform=None):
         self.data_dir = data_dir
         self.transform = transform
@@ -56,7 +49,6 @@ class MultimodalDeepfakeDataset(Dataset):
         return image, torch.tensor(label, dtype=torch.float32)
 
 def obtener_dataloaders(data_dir, batch_size=BATCH_SIZE):
-    """Crea y retorna los DataLoaders de entrenamiento y validación (división 80/20)."""
     dataset = MultimodalDeepfakeDataset(data_dir, transform=transform_train)
     if len(dataset) == 0:
         return None, None
@@ -69,4 +61,3 @@ def obtener_dataloaders(data_dir, batch_size=BATCH_SIZE):
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader
-

@@ -295,7 +295,7 @@ class MediaRouter(private val context: Context) {
             val original = context.contentResolver.openInputStream(uri)?.use { stream ->
                 BitmapFactory.decodeStream(stream, null, decodeOptions)
             }
-            
+
             if (original != null) {
                 detectAndCropFace(original)
             } else {
@@ -348,7 +348,6 @@ class MediaRouter(private val context: Context) {
                 val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() } ?: faces[0]
                 val box = face.boundingBox
 
-                // Margen pericial forense del 15% para abarcar frente, mejillas y barbilla
                 val marginX = (box.width() * 0.15f).toInt()
                 val marginY = (box.height() * 0.15f).toInt()
                 val left = (box.left - marginX).coerceIn(0, normalizedSource.width - 1)
@@ -365,7 +364,6 @@ class MediaRouter(private val context: Context) {
                 }
             }
 
-            // Descarte automático si no se detecta ningún rostro humano
             Log.i(TAG, "BlazeFace: No se detectó rostro humano en la imagen. Protocolo de descarte automático activo.")
             val minDim = minOf(normalizedSource.width, normalizedSource.height)
             val cropX = (normalizedSource.width - minDim) / 2
@@ -431,14 +429,13 @@ class MediaRouter(private val context: Context) {
         return bitmap
     }
 
-
     private fun createSyntheticSpectrogramBitmap(): Bitmap {
         val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint()
 
         canvas.drawColor(Color.rgb(15, 23, 42))
-        
+
         for (y in 0 until 224 step 4) {
             for (x in 0 until 224 step 4) {
                 val intensity = ((Math.sin(x * 0.05) + Math.cos(y * 0.05) + 2) / 4.0 * 255).toInt()
@@ -490,4 +487,3 @@ class MediaRouter(private val context: Context) {
         return uri.lastPathSegment ?: "muestra_multimodal"
     }
 }
-

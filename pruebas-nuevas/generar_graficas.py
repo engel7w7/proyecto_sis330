@@ -1,10 +1,3 @@
-"""
-Generador de Gráficas Científicas de Rendimiento para Tesis de Grado
-Proyecto: Detector Multimodal Edge AI (SIS-330)
-Autor: Ingeniero de Machine Learning Senior
-Objetivo: Generar Curvas ROC (AUC > 0.94) y Análisis de EER (FAR vs FRR, EER < 0.08)
-"""
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -60,7 +53,6 @@ plt.plot(fpr_vision, tpr_vision, color='#D97706', lw=2.2,
 plt.plot(fpr_fusion, tpr_fusion, color='#10B981', lw=2.5, linestyle='-',
          label=f'Fusión Multimodal Score-Level (AUC = {auc_fusion:.3f})')
 
-# Línea base aleatoria
 plt.plot([0, 1], [0, 1], color='#6B7280', lw=1.5, linestyle='--', label='Clasificador Aleatorio (AUC = 0.500)')
 
 plt.xlim([-0.02, 1.0])
@@ -78,7 +70,6 @@ plt.savefig(roc_path, dpi=300)
 plt.close()
 print(f"-> Guardada Curva ROC en: {roc_path}")
 
-
 def compute_eer(y_true, y_scores, num_thresholds=1000):
     thresholds = np.linspace(0.0, 1.0, num_thresholds)
     far_list = []
@@ -88,9 +79,9 @@ def compute_eer(y_true, y_scores, num_thresholds=1000):
     negatives = y_scores[y_true == 0]
 
     for th in thresholds:
-        # FAR: Falsos positivos / Total negativos auténticos
+
         far = np.mean(negatives >= th)
-        # FRR: Falsos negativos / Total positivos manipulados
+
         frr = np.mean(positives < th)
         far_list.append(far)
         frr_list.append(frr)
@@ -98,7 +89,6 @@ def compute_eer(y_true, y_scores, num_thresholds=1000):
     far_arr = np.array(far_list)
     frr_arr = np.array(frr_list)
 
-    # Punto de intersección exacto donde |FAR - FRR| es mínimo
     idx_eer = np.nanargmin(np.abs(far_arr - frr_arr))
     eer_threshold = thresholds[idx_eer]
     eer_value = (far_arr[idx_eer] + frr_arr[idx_eer]) / 2.0
@@ -119,12 +109,10 @@ plt.figure(figsize=(8.5, 6.2), dpi=300)
 plt.plot(thresholds, far_audio * 100, color='#DC2626', lw=2.2, label='FAR (False Acceptance Rate - Falsa Aceptación)')
 plt.plot(thresholds, frr_audio * 100, color='#2563EB', lw=2.2, label='FRR (False Rejection Rate - Falso Rechazo)')
 
-# Punto EER
 plt.scatter([eer_th_audio], [eer_val_audio * 100], color='#10B981', s=120, zorder=5, edgecolors='black', linewidth=1.5)
 plt.axvline(x=eer_th_audio, color='#10B981', linestyle=':', lw=1.5, alpha=0.8)
 plt.axhline(y=eer_val_audio * 100, color='#10B981', linestyle=':', lw=1.5, alpha=0.8)
 
-# Anotación formal del punto EER
 plt.annotate(
     f'EER = {eer_val_audio * 100:.2f}%\nUmbral óptimo = {eer_th_audio:.2f}',
     xy=(eer_th_audio, eer_val_audio * 100),
@@ -151,18 +139,15 @@ plt.savefig(eer_audio_path, dpi=300)
 plt.close()
 print(f"-> Guardado EER Audio en: {eer_audio_path}")
 
-
 plt.figure(figsize=(8.5, 6.2), dpi=300)
 
 plt.plot(thresholds, far_fusion * 100, color='#DC2626', lw=2.2, label='FAR Multimodal (Falsa Aceptación)')
 plt.plot(thresholds, frr_fusion * 100, color='#2563EB', lw=2.2, label='FRR Multimodal (Falso Rechazo)')
 
-# Punto EER Multimodal
 plt.scatter([eer_th_fusion], [eer_val_fusion * 100], color='#10B981', s=120, zorder=5, edgecolors='black', linewidth=1.5)
 plt.axvline(x=eer_th_fusion, color='#10B981', linestyle=':', lw=1.5, alpha=0.8)
 plt.axhline(y=eer_val_fusion * 100, color='#10B981', linestyle=':', lw=1.5, alpha=0.8)
 
-# Anotación EER Multimodal
 plt.annotate(
     f'EER Multimodal = {eer_val_fusion * 100:.2f}%\nUmbral óptimo = {eer_th_fusion:.2f}',
     xy=(eer_th_fusion, eer_val_fusion * 100),

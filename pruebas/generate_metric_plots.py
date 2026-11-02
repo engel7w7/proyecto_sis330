@@ -125,7 +125,7 @@ def autolabel(rects):
         height = rect.get_height()
         ax.annotate(f'{height:.2f}%',
                     xy=(rect.get_x() + rect.get_width() / 2, height),
-                    xytext=(0, 4),  # 4 points vertical offset
+                    xytext=(0, 4),
                     textcoords="offset points",
                     ha='center', va='bottom', fontsize=10, fontweight='bold')
 
@@ -154,7 +154,6 @@ table.auto_set_font_size(False)
 table.set_fontsize(10.5)
 table.scale(1, 2.2)
 
-# Estilo de cabecera y filas
 for (row, col), cell in table.get_celld().items():
     if row == 0:
         cell.set_text_props(weight='bold', color='white')

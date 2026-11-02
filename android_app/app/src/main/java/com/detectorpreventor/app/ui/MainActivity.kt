@@ -389,6 +389,39 @@ class MainActivity : ComponentActivity() {
 
     private fun simulateIncomingNotification(mediaType: MediaType, isThreat: Boolean, sender: String, text: String) {
         lifecycleScope.launch(Dispatchers.Default) {
+            val notifId = UUID.randomUUID().toString()
+            val now = System.currentTimeMillis()
+
+            val pendingDesc = when (mediaType) {
+                MediaType.AUDIO_ONLY -> "$text (Descargando nota de voz en WhatsApp...)"
+                MediaType.IMAGE_ONLY -> "$text (Descargando fotografía en WhatsApp...)"
+                MediaType.VIDEO_MULTIMODAL -> "$text (Descargando video en WhatsApp...)"
+                else -> "$text (Descargando...)"
+            }
+            val pendingNotif = InterceptedNotification(
+                id = notifId,
+                appName = "WhatsApp",
+                packageName = "com.whatsapp",
+                sender = sender,
+                text = pendingDesc,
+                timestamp = now,
+                mediaType = mediaType,
+                riskScore = 0.0f,
+                isThreat = false,
+                fusionResult = FusionResult(
+                    globalRiskPercentage = 0.0f,
+                    audioFraudProb = 0.0f,
+                    visionFraudProb = 0.0f,
+                    riskLevel = RiskLevel.BAJO,
+                    weightAudio = if (mediaType == MediaType.AUDIO_ONLY) 1.0f else 0.55f,
+                    weightVision = if (mediaType == MediaType.IMAGE_ONLY) 1.0f else 0.45f,
+                    diagnosticSummary = "Descargando archivo multimedia en segundo plano desde WhatsApp..."
+                )
+            )
+            NotificationRepository.addNotification(pendingNotif)
+
+            kotlinx.coroutines.delay(1000L)
+
             var faceBitmapToStore: Bitmap? = null
             var audioBitmapToStore: Bitmap? = null
 
@@ -426,14 +459,16 @@ class MainActivity : ComponentActivity() {
             } else {
                 RiskScorer.calculateGlobalRisk(audioProb, visionProb)
             }
-            val notif = InterceptedNotification(
-                id = UUID.randomUUID().toString(),
-                appName = "WhatsApp",
-                packageName = "com.whatsapp",
-                sender = sender,
-                text = text,
-                timestamp = System.currentTimeMillis(),
-                mediaType = mediaType,
+
+            val resolvedStatus = when (mediaType) {
+                MediaType.AUDIO_ONLY -> if (isThreat) "Nota de voz sospechosa (Alerta: Posible clonación sintética)" else "Nota de voz entrante analizada (Voz humana auténtica)"
+                MediaType.IMAGE_ONLY -> if (isThreat) "Fotografía sospechosa (Alerta: Posible FaceSwap / Deepfake)" else "Fotografía entrante analizada (Rostro humano auténtico)"
+                MediaType.VIDEO_MULTIMODAL -> if (isThreat) "Video sospechoso con posible alteración audiovisual" else "Video entrante analizado (Contenido audiovisual auténtico)"
+                else -> text
+            }
+
+            val resolvedNotif = pendingNotif.copy(
+                text = "$text | Resultado: $resolvedStatus",
                 riskScore = fusion.globalRiskPercentage,
                 isThreat = fusion.globalRiskPercentage >= 70f,
                 fusionResult = fusion
@@ -441,13 +476,13 @@ class MainActivity : ComponentActivity() {
 
             NotificationMediaCache.storeMedia(
                 context = this@MainActivity,
-                notifId = notif.id,
+                notifId = resolvedNotif.id,
                 faceBitmap = faceBitmapToStore,
                 audioBitmap = audioBitmapToStore
             )
 
-            NotificationRepository.addNotification(notif)
-            Log.i(TAG, "Notificacion simulada evaluada por TFLite: [WhatsApp] $sender - Riesgo: ${fusion.globalRiskPercentage}%")
+            NotificationRepository.updateNotification(resolvedNotif)
+            Log.i(TAG, "Notificacion simulada resuelta exitosamente por TFLite V2: [WhatsApp] $sender - Riesgo: ${fusion.globalRiskPercentage}%")
         }
     }
 
@@ -468,4 +503,3 @@ class MainActivity : ComponentActivity() {
         visionClassifier.close()
     }
 }
-

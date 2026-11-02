@@ -1,8 +1,3 @@
-"""
-Módulo de entrenamiento de modelos expertos (Audio y Visión) en PyTorch.
-Gestiona el bucle de entrenamiento, métricas de desempeño y guardado del mejor modelo.
-"""
-
 import os
 import json
 import torch
@@ -16,7 +11,6 @@ from src.models.vision_net import EfficientNetVision
 from src.models.dataloaders import obtener_dataloaders
 
 def calcular_metricas(preds_binary, targets):
-    """Calcula las métricas de clasificación: Accuracy, Precision, Recall y F1-Score."""
     tp = ((preds_binary == 1) & (targets == 1)).sum().item()
     fp = ((preds_binary == 1) & (targets == 0)).sum().item()
     fn = ((preds_binary == 0) & (targets == 1)).sum().item()
@@ -40,13 +34,9 @@ def calcular_metricas(preds_binary, targets):
     }
 
 def entrenar_modelo_profesional(modelo, train_loader, val_loader, ruta_guardado, epochs=EPOCHS, lr=LEARNING_RATE, nombre_modelo="Experto"):
-    """
-    Entrena el modelo PyTorch utilizando AdamW y ReduceLROnPlateau.
-    Aplica parada temprana (Early Stopping) si la pérdida de validación no mejora.
-    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     modelo = modelo.to(device)
-    
+
     criterio = nn.BCEWithLogitsLoss()
     optimizador = optim.AdamW(modelo.parameters(), lr=lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizador, mode='min', factor=0.5, patience=2)
@@ -65,13 +55,13 @@ def entrenar_modelo_profesional(modelo, train_loader, val_loader, ruta_guardado,
         if train_loader and len(train_loader) > 0:
             for imagenes, etiquetas in tqdm(train_loader, desc=f"Época {epoch+1}/{epochs}"):
                 imagenes, etiquetas = imagenes.to(device), etiquetas.to(device).unsqueeze(1)
-                
+
                 optimizador.zero_grad()
                 salidas = modelo(imagenes)
                 loss = criterio(salidas, etiquetas.float())
                 loss.backward()
                 optimizador.step()
-                
+
                 running_train_loss += loss.item() * imagenes.size(0)
 
         train_loss = running_train_loss / max(1, len(train_loader.dataset) if train_loader else 1)
@@ -91,7 +81,7 @@ def entrenar_modelo_profesional(modelo, train_loader, val_loader, ruta_guardado,
 
                     probs = torch.sigmoid(salidas)
                     preds = (probs > 0.5).long()
-                    
+
                     all_preds.extend(preds.cpu().numpy().flatten())
                     all_targets.extend(etiquetas.long().cpu().numpy().flatten())
 
@@ -142,7 +132,6 @@ def entrenar_modelo_profesional(modelo, train_loader, val_loader, ruta_guardado,
     return historial_metricas
 
 def entrenar_todo():
-    """Lanza el entrenamiento completo para el experto de audio y de visión."""
     dir_audio = os.path.join(DATA_PROCESSED_DIR, 'audio')
     dir_vision = os.path.join(DATA_PROCESSED_DIR, 'vision')
 
@@ -158,4 +147,3 @@ def entrenar_todo():
 
 if __name__ == "__main__":
     entrenar_todo()
-

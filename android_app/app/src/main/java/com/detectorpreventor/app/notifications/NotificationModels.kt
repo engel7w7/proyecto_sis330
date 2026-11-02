@@ -155,8 +155,42 @@ object NotificationRepository {
         _isServiceConnected.value = connected
     }
 
+    fun updateNotification(item: InterceptedNotification) {
+        val currentList = _notifications.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == item.id }
+        if (index != -1) {
+            currentList[index] = item
+            _notifications.value = currentList
+            persistToStorage(currentList)
+        } else {
+            addNotification(item)
+        }
+    }
+
     fun addNotification(item: InterceptedNotification) {
         val currentList = _notifications.value.toMutableList()
+
+        val indexById = currentList.indexOfFirst { it.id == item.id }
+        if (indexById != -1) {
+            currentList[indexById] = item
+            _notifications.value = currentList
+            persistToStorage(currentList)
+            return
+        }
+
+        val pendingIndex = currentList.indexOfFirst { existing ->
+            existing.packageName == item.packageName &&
+                    existing.sender.equals(item.sender, ignoreCase = true) &&
+                    existing.mediaType == item.mediaType &&
+                    (existing.text.contains("descarga", ignoreCase = true) || existing.text.contains("pendiente", ignoreCase = true)) &&
+                    kotlin.math.abs(item.timestamp - existing.timestamp) < 60000L
+        }
+        if (pendingIndex != -1 && !item.text.contains("descarga", ignoreCase = true)) {
+            currentList[pendingIndex] = item
+            _notifications.value = currentList
+            persistToStorage(currentList)
+            return
+        }
 
         val existingIndex = currentList.indexOfFirst { existing ->
             existing.packageName == item.packageName &&

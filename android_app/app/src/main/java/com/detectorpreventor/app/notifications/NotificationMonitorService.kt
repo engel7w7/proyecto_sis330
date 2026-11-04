@@ -310,24 +310,24 @@ class NotificationMonitorService : NotificationListenerService() {
         }
 
         val hasPictureExtra = extras.get(Notification.EXTRA_PICTURE) != null ||
-                extras.get("android.pictureIcon") != null ||
-                extras.get(Notification.EXTRA_LARGE_ICON) != null ||
-                extras.get("android.largeIcon.big") != null
+                extras.get("android.pictureIcon") != null
 
         val urlPattern = Regex("""(?i)\b(?:https?://|www\.)\S+""")
         val hasUrl = urlPattern.containsMatchIn(combinedContent) ||
                 combinedContent.contains("http://", ignoreCase = true) ||
                 combinedContent.contains("https://", ignoreCase = true)
 
-        var isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
+        val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
                 (!hasUrl && (
-                    combinedContent.contains("video", ignoreCase = true) ||
-                    combinedContent.contains("vídeo", ignoreCase = true) ||
-                    combinedContent.contains("videollamada", ignoreCase = true) ||
-                    combinedContent.contains("videonota", ignoreCase = true) ||
                     combinedContent.contains("🎥") ||
                     combinedContent.contains("📹") ||
                     combinedContent.contains("🎬") ||
+                    text.equals("Video", ignoreCase = true) ||
+                    text.equals("Vídeo", ignoreCase = true) ||
+                    text.startsWith("Video (", ignoreCase = true) ||
+                    text.startsWith("Vídeo (", ignoreCase = true) ||
+                    combinedContent.contains("videonota", ignoreCase = true) ||
+                    combinedContent.contains("videollamada", ignoreCase = true) ||
                     combinedContent.contains(".mp4", ignoreCase = true) ||
                     combinedContent.contains(".3gp", ignoreCase = true) ||
                     combinedContent.contains(".mkv", ignoreCase = true) ||
@@ -342,17 +342,13 @@ class NotificationMonitorService : NotificationListenerService() {
             Regex("""(?i)\b(?:audio)\s*\(\d{1,2}:\d{2}\)""").containsMatchIn(combinedContent)
         )
 
-        var isAudioRelated = !isVideoRelated && !hasUrl && (
+        val isAudioRelated = !isVideoRelated && !hasUrl && (
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.AUDIO_ONLY) ||
                 isDurationOnly ||
                 isVoiceNoteExplicit ||
                 isWhatsAppAudioHeader ||
-                combinedContent.contains("audio", ignoreCase = true) ||
-                combinedContent.contains("nota de voz", ignoreCase = true) ||
-                combinedContent.contains("mensaje de voz", ignoreCase = true) ||
                 combinedContent.contains("🎤") ||
                 combinedContent.contains("🎙") ||
-                combinedContent.contains("🔊") ||
                 combinedContent.contains(".opus", ignoreCase = true) ||
                 combinedContent.contains(".mp3", ignoreCase = true) ||
                 combinedContent.contains(".wav", ignoreCase = true) ||
@@ -362,16 +358,13 @@ class NotificationMonitorService : NotificationListenerService() {
         )
 
         val isPhotoExplicit = !hasUrl && (
-            combinedContent.contains("foto", ignoreCase = true) ||
-            combinedContent.contains("imagen", ignoreCase = true) ||
-            combinedContent.contains("fotografía", ignoreCase = true) ||
-            combinedContent.contains("fotografia", ignoreCase = true) ||
-            combinedContent.contains("picture", ignoreCase = true) ||
-            combinedContent.contains("photo", ignoreCase = true) ||
-            combinedContent.contains("image", ignoreCase = true) ||
             combinedContent.contains("📷") ||
             combinedContent.contains("📸") ||
             combinedContent.contains("🖼") ||
+            text.equals("Foto", ignoreCase = true) ||
+            text.equals("Imagen", ignoreCase = true) ||
+            text.startsWith("Foto (", ignoreCase = true) ||
+            text.startsWith("Imagen (", ignoreCase = true) ||
             combinedContent.contains(".jpg", ignoreCase = true) ||
             combinedContent.contains(".jpeg", ignoreCase = true) ||
             combinedContent.contains(".png", ignoreCase = true) ||
@@ -379,33 +372,13 @@ class NotificationMonitorService : NotificationListenerService() {
             hasPictureExtra
         )
 
-        var isImageRelated = !isVideoRelated && !isAudioRelated && (
+        val isImageRelated = !isVideoRelated && !isAudioRelated && (
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY) ||
                 isPhotoExplicit
         )
 
-        if (!isVideoRelated && !isAudioRelated && !isImageRelated && isWhatsApp && !hasUrl) {
-            val candidatePic = findRecentWhatsAppImage(System.currentTimeMillis())
-            if (candidatePic != null) {
-                isImageRelated = true
-                Log.i(TAG, "Notificacion clasificada como Imagen por deteccion proactiva de archivo reciente en WhatsApp Images.")
-            } else {
-                val candidateVid = findRecentWhatsAppVideoFrame(System.currentTimeMillis())
-                if (candidateVid != null) {
-                    isVideoRelated = true
-                    Log.i(TAG, "Notificacion clasificada como Video por deteccion proactiva de archivo reciente en WhatsApp Video.")
-                } else {
-                    val candidateAudio = findRecentWhatsAppAudioUri(System.currentTimeMillis())
-                    if (candidateAudio != null) {
-                        isAudioRelated = true
-                        Log.i(TAG, "Notificacion clasificada como Audio por deteccion proactiva de archivo reciente en WhatsApp Voice Notes.")
-                    }
-                }
-            }
-        }
-
         if (!isVideoRelated && !isAudioRelated && !isImageRelated) {
-            Log.d(TAG, "Notificacion descartada: Mensaje de texto o enlace sin contenido biometrico audiovisual.")
+            Log.d(TAG, "Notificacion descartada: Mensaje de texto o enlace sin contenido biometrico audiovisual ($text)")
             return
         }
 
@@ -990,7 +963,7 @@ class NotificationMonitorService : NotificationListenerService() {
 
     fun findRecentWhatsAppImage(notifTimestamp: Long = System.currentTimeMillis()): Bitmap? {
         val minTimestampMs = notifTimestamp - 60_000L
-        val maxAgeMs = 300_000L
+        val maxAgeMs = 120_000L
 
         try {
             val projection = mutableListOf(
@@ -1112,7 +1085,7 @@ class NotificationMonitorService : NotificationListenerService() {
 
     fun findRecentWhatsAppVideoFrame(notifTimestamp: Long = System.currentTimeMillis()): Bitmap? {
         val minTimestampMs = notifTimestamp - 60_000L
-        val maxAgeMs = 300_000L
+        val maxAgeMs = 120_000L
 
         try {
             val projection = mutableListOf(
@@ -1246,7 +1219,7 @@ class NotificationMonitorService : NotificationListenerService() {
 
     fun findRecentWhatsAppAudioUri(notifTimestamp: Long = System.currentTimeMillis()): Uri? {
         val minTimestampMs = notifTimestamp - 60_000L
-        val maxAgeMs = 300_000L
+        val maxAgeMs = 120_000L
 
         try {
             val projection = mutableListOf(

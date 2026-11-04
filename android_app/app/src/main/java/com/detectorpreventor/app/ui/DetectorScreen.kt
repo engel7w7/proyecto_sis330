@@ -53,7 +53,8 @@ fun DetectorScreen(
     onSelectFile: () -> Unit,
     onAnalyzeSample: (String, Int) -> Unit,
     onInspectNotification: (InterceptedNotification) -> Unit = {},
-    onSimulateNotification: (MediaType, Boolean, String, String) -> Unit = { _, _, _, _ -> }
+    onSimulateNotification: (MediaType, Boolean, String, String) -> Unit = { _, _, _, _ -> },
+    onDismissInspectedNotification: () -> Unit = {}
 ) {
     var isHeatmapEnabled by remember { mutableStateOf(true) }
 
@@ -113,7 +114,8 @@ fun DetectorScreen(
                     isHeatmapEnabled = isHeatmapEnabled,
                     onToggleHeatmap = { isHeatmapEnabled = it },
                     onNavigateToUpload = { onScreenChange(ScreenNav.Upload) },
-                    onAnalyzeSample = onAnalyzeSample
+                    onAnalyzeSample = onAnalyzeSample,
+                    onDismissInspectedNotification = onDismissInspectedNotification
                 )
                 is ScreenNav.Upload -> UploadView(
                     payload = payload,
@@ -146,7 +148,8 @@ fun ScannerView(
     isHeatmapEnabled: Boolean,
     onToggleHeatmap: (Boolean) -> Unit,
     onNavigateToUpload: () -> Unit,
-    onAnalyzeSample: (String, Int) -> Unit = { _, _ -> }
+    onAnalyzeSample: (String, Int) -> Unit = { _, _ -> },
+    onDismissInspectedNotification: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val blockedSenders by NotificationRepository.blockedSenders.collectAsState()
@@ -683,7 +686,8 @@ fun ScannerView(
             OutlinedButton(
                 onClick = {
                     isAlertDismissed = true
-                    Toast.makeText(context, "Alerta pericial descartada.", Toast.LENGTH_SHORT).show()
+                    onDismissInspectedNotification()
+                    Toast.makeText(context, "Muestra descartada y removida del historial interceptado.", Toast.LENGTH_SHORT).show()
                 },
                 colors = ButtonDefaults.outlinedButtonColors(containerColor = ButtonGray),
                 shape = RoundedCornerShape(12.dp),
@@ -1690,6 +1694,27 @@ fun NotificationsView(
                 Button(
                     onClick = {
                         onSimulateNotification(
+                            MediaType.IMAGE_ONLY,
+                            false,
+                            "Contacto WhatsApp",
+                            "Paisaje natural de montaña sin personas (descarte_blazeface.jpg)"
+                        )
+                        Toast.makeText(context, "Foto sin rostro enviada a BlazeFace (Descarte automático a 0.0% de riesgo)", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.FilterVintage, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Simular Foto Sin Rostro Humano (Descarte BlazeFace)", fontSize = 12.sp, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        onSimulateNotification(
                             MediaType.VIDEO_MULTIMODAL,
                             false,
                             "Primo",
@@ -1832,6 +1857,7 @@ fun NotificationsView(
             }
         } else {
             notifications.forEach { notif ->
+                val isNotifBlocked = NotificationRepository.isSenderBlocked(notif.sender)
                 val badgeColor = if (notif.riskScore >= 70f) RiskHighRed else if (notif.riskScore >= 30f) RiskMediumYellow else RiskLowGreen
                 Card(
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -1848,7 +1874,6 @@ fun NotificationsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val isNotifBlocked = NotificationRepository.isSenderBlocked(notif.sender)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
@@ -1894,6 +1919,80 @@ fun NotificationsView(
                             )
                         }
 
+                        if (notif.isFaceDiscarded()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(AccentCyan.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                    .border(1.dp, AccentCyan.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Face,
+                                        contentDescription = null,
+                                        tint = AccentCyan,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "BLAZEFACE: DESCARTE FACIAL (0.0% RIESGO)",
+                                        color = AccentCyan,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        } else if (notif.mediaType == MediaType.IMAGE_ONLY || notif.mediaType == MediaType.VIDEO_MULTIMODAL) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(PrimaryIndigo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                    .border(1.dp, PrimaryIndigo.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Face,
+                                        contentDescription = null,
+                                        tint = Color(0xFFA5B4FC),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "BLAZEFACE: ROSTRO DETECTADO (ROI)",
+                                        color = Color(0xFFA5B4FC),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        } else if (notif.mediaType == MediaType.AUDIO_ONLY) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF8B5CF6).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.GraphicEq,
+                                        contentDescription = null,
+                                        tint = Color(0xFFC4B5FD),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "ESPECTROGRAMA STFT (VOZ)",
+                                        color = Color(0xFFC4B5FD),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
@@ -1929,6 +2028,21 @@ fun NotificationsView(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                IconButton(
+                                    onClick = {
+                                        NotificationRepository.removeNotification(notif.id)
+                                        Toast.makeText(context, "Notificación descartada del historial.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Descartar del historial",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
                                 IconButton(
                                     onClick = {
                                         if (isNotifBlocked) {

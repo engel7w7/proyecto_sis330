@@ -23,10 +23,11 @@ fun RiskIndicatorCard(
     fusionResult: FusionResult,
     modifier: Modifier = Modifier
 ) {
-    val (badgeColor, badgeText) = when (fusionResult.riskLevel) {
-        RiskLevel.BAJO -> Pair(RiskLowGreen, "RIESGO BAJO - CONTENIDO AUTÉNTICO")
-        RiskLevel.MEDIO -> Pair(RiskMediumYellow, "RIESGO MEDIO - ALERTA MODERADA")
-        RiskLevel.ALTO -> Pair(RiskHighRed, "RIESGO ALTO - POSIBLE DEEPFAKE / ESTAFA")
+    val (badgeColor, badgeText) = when {
+        fusionResult.wasFaceDiscarded -> Pair(AccentCyan, "DESCARTE AUTOMÁTICO - SIN ROSTRO HUMANO")
+        fusionResult.riskLevel == RiskLevel.BAJO -> Pair(RiskLowGreen, "RIESGO BAJO - CONTENIDO AUTÉNTICO")
+        fusionResult.riskLevel == RiskLevel.MEDIO -> Pair(RiskMediumYellow, "RIESGO MEDIO - ALERTA MODERADA")
+        else -> Pair(RiskHighRed, "RIESGO ALTO - POSIBLE DEEPFAKE / ESTAFA")
     }
 
     Column(
@@ -138,4 +139,3 @@ fun RiskIndicatorCard(
         }
     }
 }
-

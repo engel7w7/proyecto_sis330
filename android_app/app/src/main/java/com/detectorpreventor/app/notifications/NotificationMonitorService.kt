@@ -46,7 +46,7 @@ class NotificationMonitorService : NotificationListenerService() {
         const val MIN_AUDIO_BYTES = 2048L
         const val MIN_VIDEO_BYTES = 20480L
         const val MAX_MEDIA_AGE_MS = 120_000L
-        const val MAX_DOWNLOAD_POLL_ATTEMPTS = 25
+        const val MAX_DOWNLOAD_POLL_ATTEMPTS = 12
 
         fun isExcludedDownloadOrTempFile(name: String): Boolean {
             val lower = name.lowercase()
@@ -411,7 +411,6 @@ class NotificationMonitorService : NotificationListenerService() {
                         aClassifier = aClassifier
                     )
                 } else {
-
                     val pendingItem = InterceptedNotification(
                         id = UUID.randomUUID().toString(),
                         appName = appName,
@@ -460,7 +459,8 @@ class NotificationMonitorService : NotificationListenerService() {
                         faceBitmap = null,
                         audioBitmap = realSpecBitmap,
                         vClassifier = vClassifier,
-                        aClassifier = aClassifier
+                        aClassifier = aClassifier,
+                        mediaUriString = realAudioUri?.toString()
                     )
                 } else {
                     val pendingItem = InterceptedNotification(
@@ -514,7 +514,8 @@ class NotificationMonitorService : NotificationListenerService() {
                         faceBitmap = realVideoFrame,
                         audioBitmap = realSpecBitmap,
                         vClassifier = vClassifier,
-                        aClassifier = aClassifier
+                        aClassifier = aClassifier,
+                        mediaUriString = realVideoAudioUri?.toString()
                     )
                 } else {
                     val pendingItem = InterceptedNotification(
@@ -554,7 +555,8 @@ class NotificationMonitorService : NotificationListenerService() {
         faceBitmap: Bitmap?,
         audioBitmap: Bitmap?,
         vClassifier: VisionClassifier,
-        aClassifier: AudioClassifier
+        aClassifier: AudioClassifier,
+        mediaUriString: String? = null
     ) {
         var isFaceDetected = true
         val visionProb: Float? = if (faceBitmap != null) {
@@ -589,8 +591,9 @@ class NotificationMonitorService : NotificationListenerService() {
             )
         }
 
-        val isThreatScore = fusionResult.globalRiskPercentage >= 70f
-        val displayText = when (mediaType) {
+        val isSenderBlocked = NotificationRepository.isSenderBlocked(sender)
+        val isThreatScore = fusionResult.globalRiskPercentage >= 70f || isSenderBlocked
+        val baseDisplayText = when (mediaType) {
             MediaType.IMAGE_ONLY -> when {
                 !isFaceDetected -> "Fotografía recibida (Descarte automático: Sin rostro humano)"
                 isThreatScore -> "Fotografía sospechosa (Alerta: Posible FaceSwap / Deepfake)"
@@ -606,6 +609,15 @@ class NotificationMonitorService : NotificationListenerService() {
             }
             else -> "Archivo analizado"
         }
+        val displayText = if (isSenderBlocked) "[REMITENTE BLOQUEADO] $baseDisplayText" else baseDisplayText
+
+        val finalFusion = if (isSenderBlocked) {
+            fusionResult.copy(
+                diagnosticSummary = fusionResult.diagnosticSummary + "\n• Remitente en Lista Negra: Contacto aislado y bloqueado localmente por Edge AI."
+            )
+        } else {
+            fusionResult
+        }
 
         val item = InterceptedNotification(
             id = UUID.randomUUID().toString(),
@@ -615,16 +627,18 @@ class NotificationMonitorService : NotificationListenerService() {
             text = displayText,
             timestamp = timestamp,
             mediaType = mediaType,
-            riskScore = fusionResult.globalRiskPercentage,
+            riskScore = if (isSenderBlocked) maxOf(finalFusion.globalRiskPercentage, 85.0f) else finalFusion.globalRiskPercentage,
             isThreat = isThreatScore,
-            fusionResult = fusionResult
+            fusionResult = finalFusion,
+            mediaUriString = mediaUriString
         )
 
         NotificationMediaCache.storeMedia(
             context = applicationContext,
             notifId = item.id,
             faceBitmap = faceBitmap,
-            audioBitmap = audioBitmap
+            audioBitmap = audioBitmap,
+            mediaUriString = mediaUriString
         )
 
         NotificationRepository.addNotification(item)
@@ -647,64 +661,28 @@ class NotificationMonitorService : NotificationListenerService() {
             var resolved = false
 
             for (attempt in 1..MAX_DOWNLOAD_POLL_ATTEMPTS) {
-                delay(if (attempt <= 6) 600L else 1200L)
+                delay(if (attempt <= 6) 600L else 1000L)
 
-                when (mediaType) {
-                    MediaType.IMAGE_ONLY -> {
-                        val realPicture = findRecentWhatsAppImage(notifTime)
-                        if (realPicture != null) {
-                            val isFaceDetected = vClassifier.checkFacePresence(realPicture)
-                            val visionProb = if (isFaceDetected) {
-                                vClassifier.classifyFaceKeyframe(realPicture, null, requireFaceDetection = true)
-                            } else 0.0f
+                try {
+                    when (mediaType) {
+                        MediaType.IMAGE_ONLY -> {
+                            val realPicture = findRecentWhatsAppImage(notifTime)
+                            if (realPicture != null) {
+                                val isFaceDetected = vClassifier.checkFacePresence(realPicture)
+                                val visionProb = if (isFaceDetected) {
+                                    vClassifier.classifyFaceKeyframe(realPicture, null, requireFaceDetection = true)
+                                } else 0.0f
 
-                            val fusion = RiskScorer.calculateGlobalRisk(
-                                audioProb = null,
-                                visionProb = visionProb,
-                                isFaceDetected = isFaceDetected
-                            )
-                            val isThreat = fusion.globalRiskPercentage >= 70f
-                            val displayText = when {
-                                !isFaceDetected -> "Fotografía recibida (Descarte automático: Sin rostro humano)"
-                                isThreat -> "Fotografía sospechosa (Alerta: Posible FaceSwap / Deepfake)"
-                                else -> "Fotografía entrante analizada (Rostro humano auténtico)"
-                            }
-
-                            val updated = pendingItem.copy(
-                                text = displayText,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = isThreat,
-                                fusionResult = fusion
-                            )
-                            NotificationMediaCache.storeMedia(applicationContext, notifId, faceBitmap = realPicture)
-                            NotificationRepository.updateNotification(updated)
-                            if (isThreat) {
-                                showFraudAlertNotification(pendingItem.sender, displayText, fusion.globalRiskPercentage, notifId)
-                            }
-                            Log.i(TAG, "Descarga de imagen resuelta en intento $attempt: $displayText (${fusion.globalRiskPercentage}%)")
-                            resolved = true
-                            break
-                        }
-                    }
-                    MediaType.AUDIO_ONLY -> {
-                        val realAudioUri = findRecentWhatsAppAudioUri(notifTime)
-                        if (realAudioUri != null) {
-                            val spec = try {
-                                MediaRouter(applicationContext).generateSpectrogramFromAudio(realAudioUri)
-                            } catch (e: Exception) { null }
-
-                            if (spec != null) {
-                                val audioProb = aClassifier.classifySpectrogram(spec, null)
                                 val fusion = RiskScorer.calculateGlobalRisk(
-                                    audioProb = audioProb,
-                                    visionProb = null,
-                                    isFaceDetected = true
+                                    audioProb = null,
+                                    visionProb = visionProb,
+                                    isFaceDetected = isFaceDetected
                                 )
                                 val isThreat = fusion.globalRiskPercentage >= 70f
-                                val displayText = if (isThreat) {
-                                    "Nota de voz sospechosa (Alerta: Posible clonación sintética)"
-                                } else {
-                                    "Nota de voz entrante analizada (Voz humana auténtica)"
+                                val displayText = when {
+                                    !isFaceDetected -> "Fotografía recibida (Descarte automático: Sin rostro humano)"
+                                    isThreat -> "Fotografía sospechosa (Alerta: Posible FaceSwap / Deepfake)"
+                                    else -> "Fotografía entrante analizada (Rostro humano auténtico)"
                                 }
 
                                 val updated = pendingItem.copy(
@@ -713,84 +691,128 @@ class NotificationMonitorService : NotificationListenerService() {
                                     isThreat = isThreat,
                                     fusionResult = fusion
                                 )
-                                NotificationMediaCache.storeMedia(applicationContext, notifId, audioBitmap = spec)
+                                NotificationMediaCache.storeMedia(applicationContext, notifId, faceBitmap = realPicture)
                                 NotificationRepository.updateNotification(updated)
                                 if (isThreat) {
                                     showFraudAlertNotification(pendingItem.sender, displayText, fusion.globalRiskPercentage, notifId)
                                 }
-                                Log.i(TAG, "Descarga de audio resuelta en intento $attempt: $displayText (${fusion.globalRiskPercentage}%)")
+                                Log.i(TAG, "Descarga de imagen resuelta en intento $attempt: $displayText (${fusion.globalRiskPercentage}%)")
                                 resolved = true
                                 break
                             }
                         }
-                    }
-                    MediaType.VIDEO_MULTIMODAL -> {
-                        val realVideoFrame = findRecentWhatsAppVideoFrame(notifTime)
-                        val realAudioUri = findRecentWhatsAppVideoAudioUri(notifTime)
-                        val realSpec = realAudioUri?.let {
-                            try { MediaRouter(applicationContext).generateSpectrogramFromAudio(it) } catch (e: Exception) { null }
+                        MediaType.AUDIO_ONLY -> {
+                            val realAudioUri = findRecentWhatsAppAudioUri(notifTime)
+                            if (realAudioUri != null) {
+                                val spec = try {
+                                    MediaRouter(applicationContext).generateSpectrogramFromAudio(realAudioUri)
+                                } catch (e: Exception) { null }
+
+                                if (spec != null) {
+                                    val audioProb = aClassifier.classifySpectrogram(spec, null)
+                                    val fusion = RiskScorer.calculateGlobalRisk(
+                                        audioProb = audioProb,
+                                        visionProb = null,
+                                        isFaceDetected = true
+                                    )
+                                    val isThreat = fusion.globalRiskPercentage >= 70f
+                                    val displayText = if (isThreat) {
+                                        "Nota de voz sospechosa (Alerta: Posible clonación sintética)"
+                                    } else {
+                                        "Nota de voz entrante analizada (Voz humana auténtica)"
+                                    }
+
+                                    val updated = pendingItem.copy(
+                                        text = displayText,
+                                        riskScore = fusion.globalRiskPercentage,
+                                        isThreat = isThreat,
+                                        fusionResult = fusion,
+                                        mediaUriString = realAudioUri.toString()
+                                    )
+                                    NotificationMediaCache.storeMedia(
+                                        context = applicationContext,
+                                        notifId = notifId,
+                                        audioBitmap = spec,
+                                        mediaUriString = realAudioUri.toString()
+                                    )
+                                    NotificationRepository.updateNotification(updated)
+                                    if (isThreat) {
+                                        showFraudAlertNotification(pendingItem.sender, displayText, fusion.globalRiskPercentage, notifId)
+                                    }
+                                    Log.i(TAG, "Descarga de audio resuelta en intento $attempt: $displayText (${fusion.globalRiskPercentage}%)")
+                                    resolved = true
+                                    break
+                                }
+                            }
                         }
-
-                        if (realVideoFrame != null || realSpec != null) {
-                            val isFaceDetected = realVideoFrame?.let { vClassifier.checkFacePresence(it) } ?: true
-                            val visionProb = if (realVideoFrame != null && isFaceDetected) {
-                                vClassifier.classifyFaceKeyframe(realVideoFrame, null, requireFaceDetection = true)
-                            } else 0.0f
-                            val audioProb = realSpec?.let { aClassifier.classifySpectrogram(it, null) }
-
-                            val fusion = RiskScorer.calculateVideoRisk(
-                                audioProb = audioProb,
-                                frameProbs = listOfNotNull(visionProb),
-                                isFaceDetected = isFaceDetected
-                            )
-                            val isThreat = fusion.globalRiskPercentage >= 70f
-                            val displayText = if (isThreat) {
-                                "Video sospechoso con posible alteración audiovisual"
-                            } else {
-                                "Video entrante analizado (Contenido audiovisual auténtico)"
+                        MediaType.VIDEO_MULTIMODAL -> {
+                            val realVideoFrame = findRecentWhatsAppVideoFrame(notifTime)
+                            val realAudioUri = findRecentWhatsAppVideoAudioUri(notifTime)
+                            val realSpec = realAudioUri?.let {
+                                try { MediaRouter(applicationContext).generateSpectrogramFromAudio(it) } catch (e: Exception) { null }
                             }
 
-                            val updated = pendingItem.copy(
-                                text = displayText,
-                                riskScore = fusion.globalRiskPercentage,
-                                isThreat = isThreat,
-                                fusionResult = fusion
-                            )
-                            NotificationMediaCache.storeMedia(applicationContext, notifId, faceBitmap = realVideoFrame, audioBitmap = realSpec)
-                            NotificationRepository.updateNotification(updated)
-                            if (isThreat) {
-                                showFraudAlertNotification(pendingItem.sender, displayText, fusion.globalRiskPercentage, notifId)
+                            if (realVideoFrame != null || realSpec != null) {
+                                val isFaceDetected = realVideoFrame?.let { vClassifier.checkFacePresence(it) } ?: true
+                                val visionProb = if (realVideoFrame != null && isFaceDetected) {
+                                    vClassifier.classifyFaceKeyframe(realVideoFrame, null, requireFaceDetection = true)
+                                } else 0.0f
+                                val audioProb = realSpec?.let { aClassifier.classifySpectrogram(it, null) }
+
+                                val fusion = RiskScorer.calculateVideoRisk(
+                                    audioProb = audioProb,
+                                    frameProbs = listOfNotNull(visionProb),
+                                    isFaceDetected = isFaceDetected
+                                )
+                                val isThreat = fusion.globalRiskPercentage >= 70f
+                                val displayText = if (isThreat) {
+                                    "Video sospechoso con posible alteración audiovisual"
+                                } else {
+                                    "Video entrante analizado (Contenido audiovisual auténtico)"
+                                }
+
+                                val updated = pendingItem.copy(
+                                    text = displayText,
+                                    riskScore = fusion.globalRiskPercentage,
+                                    isThreat = isThreat,
+                                    fusionResult = fusion,
+                                    mediaUriString = realAudioUri?.toString()
+                                )
+                                NotificationMediaCache.storeMedia(
+                                    context = applicationContext,
+                                    notifId = notifId,
+                                    faceBitmap = realVideoFrame,
+                                    audioBitmap = realSpec,
+                                    mediaUriString = realAudioUri?.toString()
+                                )
+                                NotificationRepository.updateNotification(updated)
+                                if (isThreat) {
+                                    showFraudAlertNotification(pendingItem.sender, displayText, fusion.globalRiskPercentage, notifId)
+                                }
+                                Log.i(TAG, "Descarga de video resuelta en intento $attempt: $displayText (${fusion.globalRiskPercentage}%)")
+                                resolved = true
+                                break
                             }
-                            Log.i(TAG, "Descarga de video resuelta en intento $attempt: $displayText (${fusion.globalRiskPercentage}%)")
-                            resolved = true
-                            break
                         }
+                        else -> break
                     }
-                    else -> break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error durante intento $attempt de resolución de descarga: ${e.message}")
                 }
             }
 
             if (!resolved) {
-                val timeoutText = when (mediaType) {
-                    MediaType.IMAGE_ONLY -> "Fotografía entrante (Descarga pendiente en WhatsApp)"
-                    MediaType.AUDIO_ONLY -> "Nota de voz entrante (Descarga pendiente en WhatsApp)"
-                    MediaType.VIDEO_MULTIMODAL -> "Video entrante (Descarga pendiente en WhatsApp)"
-                    else -> "Archivo pendiente de descarga"
+                Log.i(TAG, "Descarga de red WhatsApp no completada tras $MAX_DOWNLOAD_POLL_ATTEMPTS intentos para $notifId. Auto-resolviendo mediante resolveSinglePendingNotification...")
+                try {
+                    val resolvedItem = NotificationRepository.resolveSinglePendingNotification(applicationContext, pendingItem)
+                    NotificationRepository.updateNotification(resolvedItem)
+                    if (resolvedItem.isThreat) {
+                        showFraudAlertNotification(pendingItem.sender, resolvedItem.text, resolvedItem.riskScore, notifId)
+                    }
+                    Log.i(TAG, "Descarga auto-resuelta con éxito: ${resolvedItem.text} (${resolvedItem.riskScore}%)")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error en auto-resolución de descarga: ${e.message}")
                 }
-                val timeoutItem = pendingItem.copy(
-                    text = timeoutText,
-                    fusionResult = FusionResult(
-                        globalRiskPercentage = 0.0f,
-                        audioFraudProb = 0.0f,
-                        visionFraudProb = 0.0f,
-                        riskLevel = RiskLevel.BAJO,
-                        weightAudio = if (mediaType == MediaType.AUDIO_ONLY) 1.0f else 0.55f,
-                        weightVision = if (mediaType == MediaType.IMAGE_ONLY) 1.0f else 0.45f,
-                        diagnosticSummary = "El archivo multimedia aún no se descargó en el almacenamiento. Descárgalo en WhatsApp y abre el detector para analizarlo."
-                    )
-                )
-                NotificationRepository.updateNotification(timeoutItem)
-                Log.i(TAG, "Agotados intentos de descarga para $notifId. Estado final: Descarga pendiente manual.")
             }
         }
     }
@@ -839,7 +861,6 @@ class NotificationMonitorService : NotificationListenerService() {
         isVideo: Boolean = false
     ): Bitmap? {
         try {
-
             val pictureObj = extras.get(Notification.EXTRA_PICTURE)
             when (pictureObj) {
                 is Bitmap -> {
@@ -964,10 +985,15 @@ class NotificationMonitorService : NotificationListenerService() {
 
                         if ((dateMs >= minTimestampMs && ageMs <= maxAgeMs) || (notifTimestamp <= 0L && ageMs <= 60000L)) {
                             val contentUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+                            val uriStr = contentUri.toString()
+                            if (NotificationMediaCache.isFileBound(uriStr) || NotificationMediaCache.isFileBound(name)) continue
+
                             try {
                                 contentResolver.openInputStream(contentUri)?.use { stream ->
                                     val bmp = BitmapFactory.decodeStream(stream)
                                     if (bmp != null && bmp.width > 20 && bmp.height > 20) {
+                                        NotificationMediaCache.markFileBound(uriStr)
+                                        NotificationMediaCache.markFileBound(name)
                                         Log.i(TAG, "Foto real recuperada de MediaStore: $name (${bmp.width}x${bmp.height})")
                                         return bmp
                                     }
@@ -1005,12 +1031,13 @@ class NotificationMonitorService : NotificationListenerService() {
 
                     val candidate = files?.filter { f ->
                         val mod = f.lastModified()
-                        mod >= minTimestampMs && (System.currentTimeMillis() - mod) <= maxAgeMs
+                        mod >= minTimestampMs && (System.currentTimeMillis() - mod) <= maxAgeMs && !NotificationMediaCache.isFileBound(f.absolutePath)
                     }?.maxByOrNull { it.lastModified() }
 
                     if (candidate != null && isStableAndReadableFile(candidate, MIN_IMAGE_BYTES)) {
                         val bmp = BitmapFactory.decodeFile(candidate.absolutePath)
                         if (bmp != null && bmp.width > 20 && bmp.height > 20) {
+                            NotificationMediaCache.markFileBound(candidate.absolutePath)
                             Log.i(TAG, "Foto real recuperada directamente de archivo: ${candidate.name} (${bmp.width}x${bmp.height})")
                             return bmp
                         }
@@ -1073,12 +1100,17 @@ class NotificationMonitorService : NotificationListenerService() {
 
                         if ((dateMs >= minTimestampMs && ageMs <= maxAgeMs) || (notifTimestamp <= 0L && ageMs <= 60000L)) {
                             val contentUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                            val uriStr = contentUri.toString()
+                            if (NotificationMediaCache.isFileBound(uriStr) || NotificationMediaCache.isFileBound(name)) continue
+
                             val retriever = MediaMetadataRetriever()
                             try {
                                 retriever.setDataSource(applicationContext, contentUri)
                                 val frame = retriever.getFrameAtTime(1000000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                                     ?: retriever.getFrameAtTime(0L)
                                 if (frame != null) {
+                                    NotificationMediaCache.markFileBound(uriStr)
+                                    NotificationMediaCache.markFileBound(name)
                                     Log.i(TAG, "Keyframe de video real obtenido de MediaStore: $name (${frame.width}x${frame.height})")
                                     return frame
                                 }
@@ -1117,7 +1149,7 @@ class NotificationMonitorService : NotificationListenerService() {
 
                     val candidate = files?.filter { f ->
                         val mod = f.lastModified()
-                        mod >= minTimestampMs && (System.currentTimeMillis() - mod) <= maxAgeMs
+                        mod >= minTimestampMs && (System.currentTimeMillis() - mod) <= maxAgeMs && !NotificationMediaCache.isFileBound(f.absolutePath)
                     }?.maxByOrNull { it.lastModified() }
 
                     if (candidate != null && isStableAndReadableFile(candidate, MIN_VIDEO_BYTES)) {
@@ -1127,6 +1159,7 @@ class NotificationMonitorService : NotificationListenerService() {
                             val frame = retriever.getFrameAtTime(1000000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                                 ?: retriever.getFrameAtTime(0L)
                             if (frame != null) {
+                                NotificationMediaCache.markFileBound(candidate.absolutePath)
                                 Log.i(TAG, "Keyframe de video real leido directamente: ${candidate.name} (${frame.width}x${frame.height})")
                                 return frame
                             }
@@ -1190,6 +1223,10 @@ class NotificationMonitorService : NotificationListenerService() {
                         val ageMs = System.currentTimeMillis() - dateMs
                         if ((dateMs >= minTimestampMs && ageMs <= maxAgeMs) || (notifTimestamp <= 0L && ageMs <= 60000L)) {
                             val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+                            val uriStr = uri.toString()
+                            if (NotificationMediaCache.isFileBound(uriStr) || NotificationMediaCache.isFileBound(name)) continue
+                            NotificationMediaCache.markFileBound(uriStr)
+                            NotificationMediaCache.markFileBound(name)
                             Log.i(TAG, "Audio real de WhatsApp localizado en MediaStore: $name")
                             return uri
                         }
@@ -1214,6 +1251,7 @@ class NotificationMonitorService : NotificationListenerService() {
                     baseDir.walkTopDown().maxDepth(3).forEach { f ->
                         if (f.isFile &&
                             !isExcludedDownloadOrTempFile(f.name) &&
+                            !NotificationMediaCache.isFileBound(f.absolutePath) &&
                             (f.name.endsWith(".opus", ignoreCase = true) || f.name.endsWith(".m4a", ignoreCase = true) || f.name.endsWith(".mp3", ignoreCase = true) || f.name.endsWith(".ogg", ignoreCase = true)) &&
                             f.length() >= MIN_AUDIO_BYTES
                         ) {
@@ -1225,6 +1263,7 @@ class NotificationMonitorService : NotificationListenerService() {
                     }
                     val latest = allAudioFiles.maxByOrNull { it.lastModified() }
                     if (latest != null && isStableAndReadableFile(latest, MIN_AUDIO_BYTES)) {
+                        NotificationMediaCache.markFileBound(latest.absolutePath)
                         Log.i(TAG, "Audio real de WhatsApp localizado en archivo: ${latest.name} (${latest.length()} bytes)")
                         return Uri.fromFile(latest)
                     }
@@ -1257,10 +1296,11 @@ class NotificationMonitorService : NotificationListenerService() {
 
                     val candidate = files?.filter { f ->
                         val mod = f.lastModified()
-                        mod >= minTimestampMs && (System.currentTimeMillis() - mod) <= maxAgeMs
+                        mod >= minTimestampMs && (System.currentTimeMillis() - mod) <= maxAgeMs && !NotificationMediaCache.isFileBound(f.absolutePath)
                     }?.maxByOrNull { it.lastModified() }
 
                     if (candidate != null && isStableAndReadableFile(candidate, MIN_VIDEO_BYTES)) {
+                        NotificationMediaCache.markFileBound(candidate.absolutePath)
                         return Uri.fromFile(candidate)
                     }
                 }

@@ -1,4 +1,4 @@
-﻿package com.detectorpreventor.app.notifications
+package com.detectorpreventor.app.notifications
 
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaType
@@ -13,8 +13,10 @@ class NotificationRepositoryTest {
     @BeforeEach
     fun setUp() {
         NotificationRepository.clearNotifications()
+        NotificationRepository.clearBlockedSenders()
         NotificationRepository.setMonitoringActive(true)
         NotificationRepository.setServiceConnected(false)
+        NotificationMediaCache.clear()
     }
 
     @Test
@@ -39,7 +41,8 @@ class NotificationRepositoryTest {
             mediaType = MediaType.AUDIO_ONLY,
             riskScore = 94.0f,
             isThreat = true,
-            fusionResult = fusion
+            fusionResult = fusion,
+            mediaUriString = "asset://samples/06_clonacion_ia_spoof_tts_1_spec.png"
         )
 
         val json = original.toJson()
@@ -50,6 +53,7 @@ class NotificationRepositoryTest {
         assertEquals("Mama (Urgente)", json.getString("sender"))
         assertEquals("AUDIO_ONLY", json.getString("mediaType"))
         assertTrue(json.getBoolean("isThreat"))
+        assertEquals("asset://samples/06_clonacion_ia_spoof_tts_1_spec.png", json.getString("mediaUriString"))
 
         val restored = InterceptedNotification.fromJson(json)
         assertEquals(original.id, restored.id)
@@ -61,6 +65,7 @@ class NotificationRepositoryTest {
         assertEquals(original.mediaType, restored.mediaType)
         assertEquals(original.riskScore, restored.riskScore, 0.01f)
         assertEquals(original.isThreat, restored.isThreat)
+        assertEquals(original.mediaUriString, restored.mediaUriString)
         assertNotNull(restored.fusionResult)
         assertEquals(94.0f, restored.fusionResult!!.globalRiskPercentage, 0.01f)
         assertEquals(RiskLevel.ALTO, restored.fusionResult!!.riskLevel)
@@ -148,6 +153,7 @@ class NotificationRepositoryTest {
             riskScore = 0f,
             isThreat = false
         )
+
         NotificationRepository.addNotification(initial)
         assertEquals(1, NotificationRepository.notifications.value.size)
         assertEquals("Descarga de audio pendiente...", NotificationRepository.notifications.value[0].text)
@@ -201,5 +207,77 @@ class NotificationRepositoryTest {
         assertEquals("analyzed-id-2", NotificationRepository.notifications.value[0].id)
         assertEquals(88.0f, NotificationRepository.notifications.value[0].riskScore, 0.01f)
         assertTrue(NotificationRepository.notifications.value[0].isThreat)
+    }
+
+    @Test
+    fun testMediaUriStringSerialization() {
+        val notif = InterceptedNotification(
+            id = "notif-uri-1",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Banco",
+            text = "Audio importante",
+            timestamp = 1715000000000L,
+            mediaType = MediaType.AUDIO_ONLY,
+            riskScore = 95.0f,
+            isThreat = true,
+            mediaUriString = "asset://samples/06_clonacion_ia_spoof_tts_1_spec.png"
+        )
+
+        val json = notif.toJson()
+        assertEquals("asset://samples/06_clonacion_ia_spoof_tts_1_spec.png", json.getString("mediaUriString"))
+
+        val restored = InterceptedNotification.fromJson(json)
+        assertEquals("asset://samples/06_clonacion_ia_spoof_tts_1_spec.png", restored.mediaUriString)
+    }
+
+    @Test
+    fun testFileBindingMechanism() {
+        val path1 = "/storage/emulated/0/WhatsApp/Media/WhatsApp Voice Notes/PTT-001.opus"
+        val path2 = "/storage/emulated/0/WhatsApp/Media/WhatsApp Voice Notes/PTT-002.opus"
+
+        assertFalse(NotificationMediaCache.isFileBound(path1))
+        assertFalse(NotificationMediaCache.isFileBound(path2))
+
+        NotificationMediaCache.markFileBound(path1)
+        assertTrue(NotificationMediaCache.isFileBound(path1))
+        assertFalse(NotificationMediaCache.isFileBound(path2))
+
+        NotificationMediaCache.releaseFile(path1)
+        assertFalse(NotificationMediaCache.isFileBound(path1))
+    }
+
+    @Test
+    fun testIsPendingDownloadDetection() {
+        val notifPending1 = InterceptedNotification(
+            id = "p1",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Mama",
+            text = "Audio (Descargando en WhatsApp...)",
+            timestamp = System.currentTimeMillis(),
+            mediaType = MediaType.AUDIO_ONLY,
+            riskScore = 0.0f,
+            isThreat = false
+        )
+        assertTrue(notifPending1.isPendingDownload())
+
+        val notifPending2 = notifPending1.copy(text = "Descarga pendiente...")
+        assertTrue(notifPending2.isPendingDownload())
+
+        val notifResolved = notifPending1.copy(text = "Audio analizado (Voz humana)", riskScore = 4.2f)
+        assertFalse(notifResolved.isPendingDownload())
+    }
+
+    @Test
+    fun testBlockSenderAndIsSenderBlocked() {
+        assertFalse(NotificationRepository.isSenderBlocked("Mama (Urgente)"))
+        NotificationRepository.blockSender("Mama (Urgente)")
+        assertTrue(NotificationRepository.isSenderBlocked("Mama (Urgente)"))
+        assertTrue(NotificationRepository.isSenderBlocked("mama (urgente)"))
+        assertTrue(NotificationRepository.isSenderBlocked("Mama"))
+
+        NotificationRepository.unblockSender("Mama (Urgente)")
+        assertFalse(NotificationRepository.isSenderBlocked("Mama (Urgente)"))
     }
 }

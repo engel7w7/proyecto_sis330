@@ -2,6 +2,7 @@ package com.detectorpreventor.app.ui
 
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -148,6 +149,33 @@ fun ScannerView(
     onAnalyzeSample: (String, Int) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
+    val blockedSenders by NotificationRepository.blockedSenders.collectAsState()
+
+    val cleanSenderName = remember(payload?.filename) {
+        val fn = payload?.filename ?: ""
+        when {
+            fn.contains(": ") -> {
+                val afterColon = fn.substringAfter(": ")
+                if (afterColon.contains(" - ")) afterColon.substringBefore(" - ").trim() else afterColon.trim()
+            }
+            fn.isNotBlank() && !fn.startsWith("Muestra ") -> {
+                val base = fn.substringBeforeLast(".")
+                if (base.length > 28) base.take(28) + "..." else base
+            }
+            fn.startsWith("Muestra ") -> {
+                "Remitente Muestra Oficial"
+            }
+            else -> "Remitente Desconocido"
+        }
+    }
+
+    val isSenderBlocked = remember(blockedSenders, cleanSenderName) {
+        NotificationRepository.isSenderBlocked(cleanSenderName)
+    }
+
+    var showBlockConfirmDialog by remember { mutableStateOf(false) }
+    var showUnblockConfirmDialog by remember { mutableStateOf(false) }
+    var isAlertDismissed by remember(payload) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -266,6 +294,43 @@ fun ScannerView(
                     modifier = Modifier.height(36.dp)
                 ) {
                     Text("Cambiar", fontSize = 11.sp, color = PrimaryIndigo)
+                }
+            }
+        }
+
+        if (fusionResult?.wasFaceDiscarded == true || (payload?.mediaType == MediaType.IMAGE_ONLY && payload.faceDetected == false)) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F2537)),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan.copy(alpha = 0.7f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Face,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Descarte Automático por Ausencia Facial",
+                            color = AccentCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "BlazeFace analizó la imagen y verificó que no contiene rostros humanos. El canal visual se neutraliza automáticamente a 0.0% de riesgo.",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
         }
@@ -483,42 +548,142 @@ fun ScannerView(
 
         Spacer(modifier = Modifier.height(20.dp))
 
+        if (isSenderBlocked) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1018)),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, RiskHighRed.copy(alpha = 0.8f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = RiskHighRed,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "REMITENTE EN LISTA NEGRA",
+                                color = RiskHighRed,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(RiskHighRed.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Aislado", color = RiskHighRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "'$cleanSenderName' está bloqueado en este dispositivo. Sus mensajes, audios y llamadas quedan silenciados y aislados preventivamente por el motor Edge AI.",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        if (isAlertDismissed && !isSenderBlocked) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF131D2A)),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, Color(0xFF334155)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = RiskLowGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Alerta pericial descartada para esta sesión de análisis.",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Button(
-                onClick = {
-                    Toast.makeText(
-                        context,
-                        "Remitente bloqueado y reportado localmente por amenaza de estafa.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = RiskHighRed),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Block,
-                    contentDescription = "Bloquear",
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Bloquear Remitente",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            if (isSenderBlocked) {
+                OutlinedButton(
+                    onClick = { showUnblockConfirmDialog = true },
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFF1E293B)),
+                    border = BorderStroke(1.dp, RiskHighRed.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LockOpen,
+                        contentDescription = "Desbloquear",
+                        tint = AccentCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Desbloquear",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Button(
+                    onClick = { showBlockConfirmDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = RiskHighRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Block,
+                        contentDescription = "Bloquear",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Bloquear Remitente",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             OutlinedButton(
                 onClick = {
-                    Toast.makeText(context, "Alerta descartada.", Toast.LENGTH_SHORT).show()
+                    isAlertDismissed = true
+                    Toast.makeText(context, "Alerta pericial descartada.", Toast.LENGTH_SHORT).show()
                 },
                 colors = ButtonDefaults.outlinedButtonColors(containerColor = ButtonGray),
                 shape = RoundedCornerShape(12.dp),
@@ -540,6 +705,135 @@ fun ScannerView(
                     fontWeight = FontWeight.Bold
                 )
             }
+        }
+
+        if (showBlockConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showBlockConfirmDialog = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = RiskHighRed,
+                        modifier = Modifier.size(34.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Bloqueo y Aislamiento Preventivo",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "¿Confirmas el bloqueo pericial del contacto:",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = cleanSenderName,
+                            color = RiskHighRed,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Acciones automáticas del Escudo Edge AI:\n" +
+                                   "• Registro en Lista Negra persistente en hardware local.\n" +
+                                   "• Silenciamiento y neutralización de futuros deepfakes y audios de este remitente.\n" +
+                                   "• Privacidad por Diseño: no se envía información a servidores externos.",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            NotificationRepository.blockSender(cleanSenderName)
+                            showBlockConfirmDialog = false
+                            Toast.makeText(
+                                context,
+                                "Remitente '$cleanSenderName' bloqueado y aislado localmente.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RiskHighRed),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Confirmar Bloqueo", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showBlockConfirmDialog = false }
+                    ) {
+                        Text("Cancelar", color = TextSecondary)
+                    }
+                },
+                containerColor = SurfaceDark,
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+
+        if (showUnblockConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showUnblockConfirmDialog = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.LockOpen,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(34.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Desbloquear Remitente",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        text = "¿Deseas remover a '$cleanSenderName' de la Lista Negra Local? Sus mensajes futuros volverán a ser analizados normalmente.",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            NotificationRepository.unblockSender(cleanSenderName)
+                            showUnblockConfirmDialog = false
+                            Toast.makeText(
+                                context,
+                                "Remitente '$cleanSenderName' desbloqueado con éxito.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Confirmar Desbloqueo", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showUnblockConfirmDialog = false }
+                    ) {
+                        Text("Cancelar", color = TextSecondary)
+                    }
+                },
+                containerColor = SurfaceDark,
+                shape = RoundedCornerShape(16.dp)
+            )
         }
     }
 }
@@ -1035,6 +1329,10 @@ fun NotificationsView(
     val isServiceConnected by NotificationRepository.isServiceConnected.collectAsState()
     var isPermissionGranted by remember { mutableStateOf(NotificationRepository.isPermissionGranted(context)) }
 
+    LaunchedEffect(Unit) {
+        NotificationRepository.autoResolvePendingNotifications(context)
+    }
+
     DisposableEffect(Unit) {
         isPermissionGranted = NotificationRepository.isPermissionGranted(context)
         onDispose { }
@@ -1424,16 +1722,79 @@ fun NotificationsView(
                 fontWeight = FontWeight.Bold
             )
 
-            if (notifications.isNotEmpty()) {
-                TextButton(
-                    onClick = { NotificationRepository.clearNotifications() }
-                ) {
-                    Text("Limpiar", color = TextSecondary, fontSize = 12.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val hasPending = notifications.any { it.isPendingDownload() }
+                if (hasPending) {
+                    TextButton(
+                        onClick = {
+                            NotificationRepository.autoResolvePendingNotifications(context)
+                            Toast.makeText(context, "Descargas resueltas con inferencia TFLite", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Resolver Descargas", color = AccentCyan, fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                if (notifications.isNotEmpty()) {
+                    TextButton(
+                        onClick = { NotificationRepository.clearNotifications() }
+                    ) {
+                        Text("Limpiar", color = TextSecondary, fontSize = 12.sp)
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+
+        val blockedSet by NotificationRepository.blockedSenders.collectAsState()
+        if (blockedSet.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1018)),
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, RiskHighRed.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = RiskHighRed,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Lista Negra Local: ${blockedSet.size} contacto(s) aislado(s)",
+                            color = RiskHighRed,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            NotificationRepository.clearBlockedSenders()
+                            Toast.makeText(context, "Lista negra local restablecida.", Toast.LENGTH_SHORT).show()
+                        },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("Restablecer", color = AccentCyan, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
 
         if (notifications.isEmpty()) {
             Card(
@@ -1487,6 +1848,7 @@ fun NotificationsView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val isNotifBlocked = NotificationRepository.isSenderBlocked(notif.sender)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
@@ -1507,6 +1869,22 @@ fun NotificationsView(
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                                if (isNotifBlocked) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .background(RiskHighRed.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                            .border(1.dp, RiskHighRed.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "BLOQUEADO",
+                                            color = RiskHighRed,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
                             }
 
                             Text(
@@ -1547,21 +1925,55 @@ fun NotificationsView(
                                 )
                             }
 
-                            Button(
-                                onClick = { onInspectNotification(notif) },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
-                                shape = RoundedCornerShape(6.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.height(30.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Visibility,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Inspeccionar", fontSize = 10.sp, color = Color.White)
+                                IconButton(
+                                    onClick = {
+                                        if (isNotifBlocked) {
+                                            NotificationRepository.unblockSender(notif.sender)
+                                            Toast.makeText(context, "Remitente '${notif.sender}' desbloqueado.", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            NotificationRepository.blockSender(notif.sender)
+                                            Toast.makeText(context, "Remitente '${notif.sender}' bloqueado en lista negra local.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isNotifBlocked) Icons.Default.LockOpen else Icons.Default.Block,
+                                        contentDescription = "Bloquear o Desbloquear",
+                                        tint = if (isNotifBlocked) AccentCyan else RiskHighRed,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                val isPendingDownload = notif.riskScore == 0.0f ||
+                                        notif.text.contains("descarga", ignoreCase = true) ||
+                                        notif.text.contains("pendiente", ignoreCase = true)
+                                Button(
+                                    onClick = { onInspectNotification(notif) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isPendingDownload) Color(0xFF2563EB) else PrimaryIndigo
+                                    ),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPendingDownload) Icons.Default.Download else Icons.Default.Visibility,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isPendingDownload) "Descargar y Analizar" else "Inspeccionar XAI",
+                                        fontSize = 10.sp,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
                     }

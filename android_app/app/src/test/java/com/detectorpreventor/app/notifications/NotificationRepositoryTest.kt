@@ -280,4 +280,89 @@ class NotificationRepositoryTest {
         NotificationRepository.unblockSender("Mama (Urgente)")
         assertFalse(NotificationRepository.isSenderBlocked("Mama (Urgente)"))
     }
+
+    @Test
+    fun testRemoveNotification() {
+        val notif = InterceptedNotification(
+            id = "notif-remove-1",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Contacto Sospechoso",
+            text = "Prueba de eliminacion",
+            timestamp = System.currentTimeMillis(),
+            mediaType = MediaType.IMAGE_ONLY,
+            riskScore = 80.0f,
+            isThreat = true
+        )
+        NotificationRepository.addNotification(notif)
+        assertEquals(1, NotificationRepository.notifications.value.size)
+
+        val removed = NotificationRepository.removeNotification("notif-remove-1")
+        assertTrue(removed)
+        assertTrue(NotificationRepository.notifications.value.isEmpty())
+
+        val removedAgain = NotificationRepository.removeNotification("notif-remove-1")
+        assertFalse(removedAgain)
+    }
+
+    @Test
+    fun testRemoveNotificationByFilenameOrSender() {
+        val notif = InterceptedNotification(
+            id = "notif-remove-query",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Remitente Especial",
+            text = "Video sospechoso especial",
+            timestamp = System.currentTimeMillis(),
+            mediaType = MediaType.VIDEO_MULTIMODAL,
+            riskScore = 85.0f,
+            isThreat = true,
+            mediaUriString = "file:///sdcard/media/especial.mp4"
+        )
+        NotificationRepository.addNotification(notif)
+        assertEquals(1, NotificationRepository.notifications.value.size)
+
+        val removed = NotificationRepository.removeNotificationByFilenameOrSender("especial")
+        assertTrue(removed)
+        assertTrue(NotificationRepository.notifications.value.isEmpty())
+    }
+
+    @Test
+    fun testFaceDiscardSerializationAndIsPendingDownload() {
+        val fusionDiscard = FusionResult(
+            globalRiskPercentage = 0.0f,
+            audioFraudProb = 0.0f,
+            visionFraudProb = 0.0f,
+            riskLevel = RiskLevel.BAJO,
+            weightAudio = 0.0f,
+            weightVision = 1.0f,
+            diagnosticSummary = "Descarte automatico BlazeFace",
+            wasFaceDiscarded = true
+        )
+
+        val notifDiscard = InterceptedNotification(
+            id = "notif-blazeface-discard",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Amigo",
+            text = "Paisaje sin personas",
+            timestamp = System.currentTimeMillis(),
+            mediaType = MediaType.IMAGE_ONLY,
+            riskScore = 0.0f,
+            isThreat = false,
+            fusionResult = fusionDiscard
+        )
+
+        assertTrue(notifDiscard.isFaceDiscarded())
+        assertFalse(notifDiscard.isPendingDownload(), "El descarte facial con riesgo 0 no debe considerarse descarga pendiente")
+
+        val json = notifDiscard.toJson()
+        val restored = InterceptedNotification.fromJson(json)
+
+        assertTrue(restored.isFaceDiscarded())
+        assertFalse(restored.isPendingDownload())
+        assertEquals(0.0f, restored.riskScore, 0.01f)
+        assertEquals(RiskLevel.BAJO, restored.fusionResult?.riskLevel)
+        assertTrue(restored.fusionResult?.wasFaceDiscarded == true)
+    }
 }

@@ -35,8 +35,11 @@ data class InterceptedNotification(
     val formattedTime: String
         get() = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
 
+    fun isFaceDiscarded(): Boolean = fusionResult?.wasFaceDiscarded == true
+
     fun isPendingDownload(): Boolean {
-        return riskScore == 0.0f ||
+        if (isFaceDiscarded()) return false
+        return (riskScore == 0.0f && fusionResult == null) ||
                 text.contains("descarga", ignoreCase = true) ||
                 text.contains("pendiente", ignoreCase = true) ||
                 text.contains("descargando", ignoreCase = true)
@@ -63,6 +66,7 @@ data class InterceptedNotification(
             frObj.put("weightAudio", fr.weightAudio.toDouble())
             frObj.put("weightVision", fr.weightVision.toDouble())
             frObj.put("diagnosticSummary", fr.diagnosticSummary)
+            frObj.put("wasFaceDiscarded", fr.wasFaceDiscarded)
             obj.put("fusionResult", frObj)
         }
         return obj
@@ -84,7 +88,8 @@ data class InterceptedNotification(
                     riskLevel = rLevel,
                     weightAudio = frObj.optDouble("weightAudio", 0.6).toFloat(),
                     weightVision = frObj.optDouble("weightVision", 0.4).toFloat(),
-                    diagnosticSummary = frObj.optString("diagnosticSummary", "")
+                    diagnosticSummary = frObj.optString("diagnosticSummary", ""),
+                    wasFaceDiscarded = frObj.optBoolean("wasFaceDiscarded", false)
                 )
             } else null
 
@@ -209,6 +214,41 @@ object NotificationRepository {
     fun clearBlockedSenders() {
         _blockedSenders.value = emptySet()
         prefs?.edit()?.remove(KEY_BLOCKED_SENDERS)?.apply()
+    }
+
+    fun removeNotification(id: String): Boolean {
+        val currentList = _notifications.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == id }
+        if (index != -1) {
+            val removed = currentList.removeAt(index)
+            _notifications.value = currentList
+            persistToStorage(currentList)
+            removed.mediaUriString?.let { uriStr ->
+                NotificationMediaCache.releaseFile(uriStr)
+            }
+            return true
+        }
+        return false
+    }
+
+    fun removeNotificationByFilenameOrSender(query: String): Boolean {
+        if (query.isBlank()) return false
+        val currentList = _notifications.value.toMutableList()
+        val index = currentList.indexOfFirst { item ->
+            item.text.contains(query, ignoreCase = true) ||
+                    item.sender.contains(query, ignoreCase = true) ||
+                    (item.mediaUriString != null && item.mediaUriString.contains(query, ignoreCase = true))
+        }
+        if (index != -1) {
+            val removed = currentList.removeAt(index)
+            _notifications.value = currentList
+            persistToStorage(currentList)
+            removed.mediaUriString?.let { uriStr ->
+                NotificationMediaCache.releaseFile(uriStr)
+            }
+            return true
+        }
+        return false
     }
 
     fun updateNotification(item: InterceptedNotification) {
@@ -383,7 +423,51 @@ object NotificationRepository {
                 )
             }
             MediaType.IMAGE_ONLY -> {
-                val asset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
+                val isFaceDiscardCase = textLower.contains("sin rostro") ||
+                        textLower.contains("descarte") ||
+                        textLower.contains("paisaje") ||
+                        textLower.contains("sin personas") ||
+                        pending.fusionResult?.wasFaceDiscarded == true
+
+                if (isFaceDiscardCase) {
+                    val asset = "samples/01_retrato_humano_real_1.jpg"
+                    val uriStr = pending.mediaUriString ?: "asset://$asset"
+                    val risk = 0.0f
+                    val statusText = "Fotografía analizada (BlazeFace: Descarte automático por ausencia de rostro humano)"
+                    val cleanOriginal = pending.text.replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "").trim()
+                    val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Fotografía")) {
+                        "$cleanOriginal | $statusText"
+                    } else {
+                        statusText
+                    }
+
+                    val fusion = FusionResult(
+                        globalRiskPercentage = 0.0f,
+                        audioFraudProb = 0.0f,
+                        visionFraudProb = 0.0f,
+                        riskLevel = RiskLevel.BAJO,
+                        weightAudio = 0.0f,
+                        weightVision = 1.0f,
+                        diagnosticSummary = "• Descarte Automático por Ausencia Facial: BlazeFace Edge AI analizó la imagen y verificó que no contiene fisonomía facial humana.\n• La muestra se clasifica como SEGURA / SIN RIESGO (0.0%).",
+                        wasFaceDiscarded = true
+                    )
+
+                    NotificationMediaCache.storeMedia(
+                        context = context,
+                        notifId = pending.id,
+                        assetName = asset,
+                        mediaUriString = uriStr
+                    )
+
+                    pending.copy(
+                        text = displayText,
+                        riskScore = risk,
+                        isThreat = false,
+                        fusionResult = fusion,
+                        mediaUriString = uriStr
+                    )
+                } else {
+                    val asset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
                 val uriStr = pending.mediaUriString ?: "asset://$asset"
                 val risk = if (isThreat) 93.8f else 3.5f
                 val statusText = if (isThreat) {
@@ -426,6 +510,7 @@ object NotificationRepository {
                     fusionResult = fusion,
                     mediaUriString = uriStr
                 )
+                }
             }
             MediaType.VIDEO_MULTIMODAL -> {
                 val faceAsset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"

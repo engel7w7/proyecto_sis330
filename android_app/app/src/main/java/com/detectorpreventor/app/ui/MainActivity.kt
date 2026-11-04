@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
     private var currentPayload by mutableStateOf<ProcessedMediaPayload?>(null)
     private var currentFusionResult by mutableStateOf<FusionResult?>(null)
     private var activeScreen by mutableStateOf<ScreenNav>(ScreenNav.Scanner)
+    private var currentlyInspectedNotificationId: String? = null
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -123,6 +124,9 @@ class MainActivity : ComponentActivity() {
                         },
                         onSimulateNotification = { mediaType, isThreat, sender, text ->
                             simulateIncomingNotification(mediaType, isThreat, sender, text)
+                        },
+                        onDismissInspectedNotification = {
+                            dismissCurrentInspectedNotification()
                         }
                     )
                 }
@@ -165,6 +169,36 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        val simulateMediaType = intent.getStringExtra("simulate_media_type")
+        if (!simulateMediaType.isNullOrBlank()) {
+            val isThreat = intent.getBooleanExtra("simulate_threat", false)
+            val isFaceDiscard = intent.getBooleanExtra("simulate_face_discard", false)
+            val sender = intent.getStringExtra("simulate_sender") ?: "Contacto WhatsApp"
+            val text = intent.getStringExtra("simulate_text") ?: (if (isFaceDiscard) "Foto paisaje sin personas (descarte_blazeface.jpg)" else "Mensaje de prueba")
+            val mType = when (simulateMediaType.lowercase()) {
+                "image" -> MediaType.IMAGE_ONLY
+                "audio" -> MediaType.AUDIO_ONLY
+                "video" -> MediaType.VIDEO_MULTIMODAL
+                else -> MediaType.IMAGE_ONLY
+            }
+            simulateIncomingNotification(mType, isThreat, sender, text)
+            return
+        }
+
+        val inspectNotifId = intent.getStringExtra("inspect_notif_id")
+        if (!inspectNotifId.isNullOrBlank()) {
+            val target = NotificationRepository.notifications.value.find { it.id == inspectNotifId }
+            if (target != null) {
+                inspectNotification(target)
+                return
+            }
+        }
+
+        if (intent.getBooleanExtra("dismiss_inspected", false)) {
+            dismissCurrentInspectedNotification()
+            return
+        }
+
         val mediaUri: Uri? = when (action) {
             Intent.ACTION_SEND -> {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -187,6 +221,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun processMediaUri(uri: Uri, mimeType: String?, customName: String? = null) {
+        currentlyInspectedNotificationId = null
         lifecycleScope.launch(Dispatchers.Default) {
             try {
                 var payload = mediaRouter.processIncomingUri(uri, mimeType)
@@ -251,6 +286,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun runSampleAnalysis(sampleType: String, index: Int) {
+        currentlyInspectedNotificationId = null
         lifecycleScope.launch(Dispatchers.Default) {
             val sampleUri = Uri.parse("content://com.detectorpreventor.app.samples/$sampleType/$index")
             val mime = when (sampleType) {
@@ -350,8 +386,42 @@ class MainActivity : ComponentActivity() {
         return result ?: "Archivo_Local.media"
     }
 
+    private fun dismissCurrentInspectedNotification() {
+        val notifId = currentlyInspectedNotificationId
+        if (notifId != null) {
+            NotificationRepository.removeNotification(notifId)
+            currentlyInspectedNotificationId = null
+        }
+        currentPayload = null
+        currentFusionResult = null
+        activeScreen = ScreenNav.Notifications
+    }
+
     private fun inspectNotification(notif: InterceptedNotification) {
+        currentlyInspectedNotificationId = notif.id
         lifecycleScope.launch(Dispatchers.Default) {
+            if (notif.isFaceDiscarded()) {
+                val payload = ProcessedMediaPayload(
+                    mediaType = MediaType.IMAGE_ONLY,
+                    audioSpectrogram = null,
+                    faceKeyframe = NotificationMediaCache.getFaceBitmap(notif.id),
+                    filename = "${notif.appName}: ${notif.sender} - ${notif.text}",
+                    faceDetected = false,
+                    discardReason = "Descarte automático BlazeFace: Ausencia de rostro humano confirmado por Edge AI."
+                )
+                val fusion = notif.fusionResult ?: RiskScorer.calculateGlobalRisk(
+                    audioProb = null,
+                    visionProb = null,
+                    isFaceDetected = false
+                )
+                lifecycleScope.launch(Dispatchers.Main) {
+                    currentPayload = payload
+                    currentFusionResult = fusion
+                    activeScreen = ScreenNav.Scanner
+                }
+                return@launch
+            }
+
             if (notif.mediaType == MediaType.UNKNOWN) {
                 val fusionResult = notif.fusionResult ?: FusionResult(
                     globalRiskPercentage = notif.riskScore,
@@ -460,17 +530,18 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.Default) {
             val notifId = UUID.randomUUID().toString()
             val now = System.currentTimeMillis()
+            val isFaceDiscard = text.contains("sin rostro", ignoreCase = true) || text.contains("descarte", ignoreCase = true) || text.contains("paisaje", ignoreCase = true)
 
             val mediaUriToStore = when (mediaType) {
                 MediaType.AUDIO_ONLY -> if (isThreat) "asset://samples/06_clonacion_ia_spoof_tts_1_spec.png" else "asset://samples/01_voz_humana_real_bonafide_1_spec.png"
-                MediaType.IMAGE_ONLY -> if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
+                MediaType.IMAGE_ONLY -> if (isFaceDiscard) "asset://samples/01_retrato_humano_real_1.jpg" else if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
                 MediaType.VIDEO_MULTIMODAL -> if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
                 else -> null
             }
 
             val pendingDesc = when (mediaType) {
                 MediaType.AUDIO_ONLY -> "$text (Descargando nota de voz en WhatsApp...)"
-                MediaType.IMAGE_ONLY -> "$text (Descargando fotografía en WhatsApp...)"
+                MediaType.IMAGE_ONLY -> if (isFaceDiscard) "$text (Descargando imagen para BlazeFace...)" else "$text (Descargando fotografía en WhatsApp...)"
                 MediaType.VIDEO_MULTIMODAL -> "$text (Descargando video en WhatsApp...)"
                 else -> "$text (Descargando...)"
             }
@@ -483,7 +554,7 @@ class MainActivity : ComponentActivity() {
                 timestamp = now,
                 mediaType = mediaType,
                 riskScore = 0.0f,
-                isThreat = isThreat,
+                isThreat = isThreat && !isFaceDiscard,
                 mediaUriString = mediaUriToStore,
                 fusionResult = FusionResult(
                     globalRiskPercentage = 0.0f,
@@ -492,7 +563,8 @@ class MainActivity : ComponentActivity() {
                     riskLevel = RiskLevel.BAJO,
                     weightAudio = if (mediaType == MediaType.AUDIO_ONLY) 1.0f else 0.55f,
                     weightVision = if (mediaType == MediaType.IMAGE_ONLY) 1.0f else 0.45f,
-                    diagnosticSummary = "Descargando archivo multimedia en segundo plano desde WhatsApp..."
+                    diagnosticSummary = if (isFaceDiscard) "BlazeFace: Verificando fisonomía facial humana..." else "Descargando archivo multimedia en segundo plano desde WhatsApp...",
+                    wasFaceDiscarded = isFaceDiscard
                 )
             )
             NotificationRepository.addNotification(pendingNotif)

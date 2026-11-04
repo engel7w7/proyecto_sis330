@@ -310,18 +310,28 @@ class NotificationMonitorService : NotificationListenerService() {
         }
 
         val hasPictureExtra = extras.get(Notification.EXTRA_PICTURE) != null ||
-                extras.get("android.pictureIcon") != null
+                extras.get("android.pictureIcon") != null ||
+                extras.get(Notification.EXTRA_LARGE_ICON) != null ||
+                extras.get("android.largeIcon.big") != null
 
         val urlPattern = Regex("""(?i)\b(?:https?://|www\.)\S+""")
         val hasUrl = urlPattern.containsMatchIn(combinedContent) ||
                 combinedContent.contains("http://", ignoreCase = true) ||
                 combinedContent.contains("https://", ignoreCase = true)
 
-        val isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
+        var isVideoRelated = (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.VIDEO_MULTIMODAL) ||
                 (!hasUrl && (
+                    combinedContent.contains("video", ignoreCase = true) ||
+                    combinedContent.contains("vídeo", ignoreCase = true) ||
                     combinedContent.contains("videollamada", ignoreCase = true) ||
                     combinedContent.contains("videonota", ignoreCase = true) ||
-                    Regex("""(?i)\b(?:video|vídeo)\b""").containsMatchIn(combinedContent)
+                    combinedContent.contains("🎥") ||
+                    combinedContent.contains("📹") ||
+                    combinedContent.contains("🎬") ||
+                    combinedContent.contains(".mp4", ignoreCase = true) ||
+                    combinedContent.contains(".3gp", ignoreCase = true) ||
+                    combinedContent.contains(".mkv", ignoreCase = true) ||
+                    combinedContent.contains("VID-", ignoreCase = true)
                 ))
 
         val isDurationOnly = Regex("""^\s*\d{1,2}:\d{2}\s*$""").matches(text.trim())
@@ -332,25 +342,67 @@ class NotificationMonitorService : NotificationListenerService() {
             Regex("""(?i)\b(?:audio)\s*\(\d{1,2}:\d{2}\)""").containsMatchIn(combinedContent)
         )
 
-        val isAudioRelated = !isVideoRelated && !hasUrl && (
+        var isAudioRelated = !isVideoRelated && !hasUrl && (
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.AUDIO_ONLY) ||
                 isDurationOnly ||
                 isVoiceNoteExplicit ||
-                isWhatsAppAudioHeader
+                isWhatsAppAudioHeader ||
+                combinedContent.contains("audio", ignoreCase = true) ||
+                combinedContent.contains("nota de voz", ignoreCase = true) ||
+                combinedContent.contains("mensaje de voz", ignoreCase = true) ||
+                combinedContent.contains("🎤") ||
+                combinedContent.contains("🎙") ||
+                combinedContent.contains("🔊") ||
+                combinedContent.contains(".opus", ignoreCase = true) ||
+                combinedContent.contains(".mp3", ignoreCase = true) ||
+                combinedContent.contains(".wav", ignoreCase = true) ||
+                combinedContent.contains(".m4a", ignoreCase = true) ||
+                combinedContent.contains(".ogg", ignoreCase = true) ||
+                combinedContent.contains("PTT-", ignoreCase = true)
         )
 
         val isPhotoExplicit = !hasUrl && (
-            text.equals("Foto", ignoreCase = true) ||
-            text.equals("Imagen", ignoreCase = true) ||
-            text.startsWith("Foto (", ignoreCase = true) ||
-            text.startsWith("Imagen (", ignoreCase = true) ||
-            combinedContent.contains("fotografía", ignoreCase = true)
+            combinedContent.contains("foto", ignoreCase = true) ||
+            combinedContent.contains("imagen", ignoreCase = true) ||
+            combinedContent.contains("fotografía", ignoreCase = true) ||
+            combinedContent.contains("fotografia", ignoreCase = true) ||
+            combinedContent.contains("picture", ignoreCase = true) ||
+            combinedContent.contains("photo", ignoreCase = true) ||
+            combinedContent.contains("image", ignoreCase = true) ||
+            combinedContent.contains("📷") ||
+            combinedContent.contains("📸") ||
+            combinedContent.contains("🖼") ||
+            combinedContent.contains(".jpg", ignoreCase = true) ||
+            combinedContent.contains(".jpeg", ignoreCase = true) ||
+            combinedContent.contains(".png", ignoreCase = true) ||
+            combinedContent.contains("IMG-", ignoreCase = true) ||
+            hasPictureExtra
         )
-        val isImageRelated = !isVideoRelated && !isAudioRelated && (
+
+        var isImageRelated = !isVideoRelated && !isAudioRelated && (
                 (isMediaFromMessagingStyle && messagingStyleMediaType == MediaType.IMAGE_ONLY) ||
-                (hasPictureExtra && !hasUrl) ||
                 isPhotoExplicit
         )
+
+        if (!isVideoRelated && !isAudioRelated && !isImageRelated && isWhatsApp && !hasUrl) {
+            val candidatePic = findRecentWhatsAppImage(System.currentTimeMillis())
+            if (candidatePic != null) {
+                isImageRelated = true
+                Log.i(TAG, "Notificacion clasificada como Imagen por deteccion proactiva de archivo reciente en WhatsApp Images.")
+            } else {
+                val candidateVid = findRecentWhatsAppVideoFrame(System.currentTimeMillis())
+                if (candidateVid != null) {
+                    isVideoRelated = true
+                    Log.i(TAG, "Notificacion clasificada como Video por deteccion proactiva de archivo reciente en WhatsApp Video.")
+                } else {
+                    val candidateAudio = findRecentWhatsAppAudioUri(System.currentTimeMillis())
+                    if (candidateAudio != null) {
+                        isAudioRelated = true
+                        Log.i(TAG, "Notificacion clasificada como Audio por deteccion proactiva de archivo reciente en WhatsApp Voice Notes.")
+                    }
+                }
+            }
+        }
 
         if (!isVideoRelated && !isAudioRelated && !isImageRelated) {
             Log.d(TAG, "Notificacion descartada: Mensaje de texto o enlace sin contenido biometrico audiovisual.")
@@ -937,8 +989,8 @@ class NotificationMonitorService : NotificationListenerService() {
     }
 
     fun findRecentWhatsAppImage(notifTimestamp: Long = System.currentTimeMillis()): Bitmap? {
-        val minTimestampMs = notifTimestamp - 20_000L
-        val maxAgeMs = MAX_MEDIA_AGE_MS
+        val minTimestampMs = notifTimestamp - 60_000L
+        val maxAgeMs = 300_000L
 
         try {
             val projection = mutableListOf(
@@ -1011,10 +1063,17 @@ class NotificationMonitorService : NotificationListenerService() {
 
         val waDirs = listOf(
             File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/"),
+            File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Private/"),
             File("/storage/emulated/0/WhatsApp/Media/WhatsApp Images/"),
+            File("/storage/emulated/0/WhatsApp/Media/WhatsApp Images/Private/"),
             File(Environment.getExternalStorageDirectory(), "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/"),
+            File(Environment.getExternalStorageDirectory(), "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/Private/"),
             File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Images/"),
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "WhatsApp")
+            File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Images/Private/"),
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "WhatsApp"),
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "WhatsApp/Private"),
+            File("/storage/emulated/0/Pictures/WhatsApp/"),
+            File("/storage/emulated/0/Pictures/WhatsApp/Private/")
         )
 
         for (dir in waDirs) {
@@ -1052,8 +1111,8 @@ class NotificationMonitorService : NotificationListenerService() {
     }
 
     fun findRecentWhatsAppVideoFrame(notifTimestamp: Long = System.currentTimeMillis()): Bitmap? {
-        val minTimestampMs = notifTimestamp - 20_000L
-        val maxAgeMs = MAX_MEDIA_AGE_MS
+        val minTimestampMs = notifTimestamp - 60_000L
+        val maxAgeMs = 300_000L
 
         try {
             val projection = mutableListOf(
@@ -1129,10 +1188,17 @@ class NotificationMonitorService : NotificationListenerService() {
 
         val waDirs = listOf(
             File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/"),
+            File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Private/"),
             File("/storage/emulated/0/WhatsApp/Media/WhatsApp Video/"),
+            File("/storage/emulated/0/WhatsApp/Media/WhatsApp Video/Private/"),
             File(Environment.getExternalStorageDirectory(), "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/"),
+            File(Environment.getExternalStorageDirectory(), "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/Private/"),
             File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Video/"),
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "WhatsApp")
+            File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Video/Private/"),
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "WhatsApp"),
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "WhatsApp/Private"),
+            File("/storage/emulated/0/Movies/WhatsApp/"),
+            File("/storage/emulated/0/Movies/WhatsApp/Private/")
         )
 
         for (dir in waDirs) {
@@ -1179,8 +1245,8 @@ class NotificationMonitorService : NotificationListenerService() {
     }
 
     fun findRecentWhatsAppAudioUri(notifTimestamp: Long = System.currentTimeMillis()): Uri? {
-        val minTimestampMs = notifTimestamp - 20_000L
-        val maxAgeMs = MAX_MEDIA_AGE_MS
+        val minTimestampMs = notifTimestamp - 60_000L
+        val maxAgeMs = 300_000L
 
         try {
             val projection = mutableListOf(
@@ -1240,6 +1306,7 @@ class NotificationMonitorService : NotificationListenerService() {
         val candidateDirs = listOf(
             File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes/"),
             File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio/"),
+            File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio/Private/"),
             File(Environment.getExternalStorageDirectory(), "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes/"),
             File(Environment.getExternalStorageDirectory(), "WhatsApp/Media/WhatsApp Voice Notes/")
         )

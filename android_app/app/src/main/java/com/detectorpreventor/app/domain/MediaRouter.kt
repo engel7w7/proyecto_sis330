@@ -335,11 +335,10 @@ class MediaRouter(private val context: Context) {
     }
 
     fun generateSpectrogramFromAudio(uri: Uri): Bitmap {
-        Log.d(TAG, "Generando espectrograma desde audio: $uri")
+        Log.d(TAG, "Generando espectrograma real STFT desde audio: $uri")
         return try {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                createSpectrogramFromInputStream(stream)
-            } ?: createSyntheticSpectrogramBitmap()
+            val result = com.detectorpreventor.app.ml.AudioSpectrogramGenerator.generateSpectrogram(context, uri)
+            result.spectrogramBitmap
         } catch (e: Exception) {
             Log.e(TAG, "Error al generar espectrograma desde audio: ${e.message}")
             createSyntheticSpectrogramBitmap()
@@ -450,12 +449,12 @@ class MediaRouter(private val context: Context) {
     }
 
     private fun generateSpectrogramFromAudioTrack(uri: Uri): Bitmap {
-        Log.d(TAG, "Extrayendo audio de video para espectrograma: $uri")
+        Log.d(TAG, "Extrayendo y procesando audio de video para espectrograma STFT: $uri")
         return try {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                createSpectrogramFromInputStream(stream)
-            } ?: createSyntheticSpectrogramBitmap()
+            val result = com.detectorpreventor.app.ml.AudioSpectrogramGenerator.generateSpectrogram(context, uri)
+            result.spectrogramBitmap
         } catch (e: Exception) {
+            Log.e(TAG, "Fallo procesando audio de video: ${e.message}")
             createSyntheticSpectrogramBitmap()
         }
     }

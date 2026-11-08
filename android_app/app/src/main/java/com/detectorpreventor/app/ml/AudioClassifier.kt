@@ -196,12 +196,22 @@ class AudioClassifier(private val context: Context) {
         }
         val rolloffFreq = ((h - 1 - rolloffRow).toFloat() / (h - 1)) * 8000f
 
-        val normFlatness = ((flatness - 0.282f) / 0.070f).coerceIn(-2.5f, 2.5f)
-        val normHfRatio = ((hfRatio - 0.060f) / 0.039f).coerceIn(-2.5f, 2.5f)
-        val normFlux = ((flux - 0.000016f) / 0.000009f).coerceIn(-2.5f, 2.5f)
-        val normRolloff = ((rolloffFreq - 1337f) / 451f).coerceIn(-2.5f, 2.5f)
+        val isNaturalFormantDominant = lfEnergy > (hfEnergy * 2.2) && hfRatio < 0.28f
+        val isVocoderArtifactPresent = hfRatio > 0.42f || (rolloffFreq > 3200f && flatness > 0.38f)
 
-        val score = (-0.342f * normFlatness - 0.038f * normHfRatio + 0.065f * normFlux + 0.155f * normRolloff + 0.50f)
+        val score = when {
+            isNaturalFormantDominant && !isVocoderArtifactPresent -> {
+                (0.045f + (hfRatio * 0.15f)).coerceIn(0.02f, 0.20f)
+            }
+            isVocoderArtifactPresent -> {
+                (0.85f + (hfRatio * 0.25f)).coerceIn(0.80f, 0.98f)
+            }
+            else -> {
+                val normHf = ((hfRatio - 0.25f) / 0.15f).coerceIn(-1.5f, 1.5f)
+                val base = 0.40f + (normHf * 0.25f)
+                base.coerceIn(0.15f, 0.85f)
+            }
+        }
         return score.coerceIn(0.01f, 0.99f)
     }
 

@@ -278,7 +278,9 @@ object AudioSpectrogramGenerator {
             }
         }
 
-        val rangeDb = maxOf(1.0f, maxDb - minDb)
+        val topDb = 80.0f
+        val floorDb = maxOf(minDb, maxDb - topDb)
+        val rangeDb = maxOf(1.0f, maxDb - floorDb)
         val bitmap = Bitmap.createBitmap(BITMAP_SIZE, BITMAP_SIZE, Bitmap.Config.ARGB_8888)
         val pixels = IntArray(BITMAP_SIZE * BITMAP_SIZE)
 
@@ -286,7 +288,7 @@ object AudioSpectrogramGenerator {
             val melIdx = ((BITMAP_SIZE - 1 - py).toFloat() / (BITMAP_SIZE - 1) * (NUM_MELS - 1)).toInt().coerceIn(0, NUM_MELS - 1)
             for (px in 0 until BITMAP_SIZE) {
                 val frameIdx = (px.toFloat() / (BITMAP_SIZE - 1) * (numFrames - 1)).toInt().coerceIn(0, numFrames - 1)
-                val normVal = ((melSpec[melIdx][frameIdx] - minDb) / rangeDb).coerceIn(0.0f, 1.0f)
+                val normVal = ((melSpec[melIdx][frameIdx] - floorDb) / rangeDb).coerceIn(0.0f, 1.0f)
 
                 val rgb = magmaColormap(normVal)
                 pixels[py * BITMAP_SIZE + px] = rgb

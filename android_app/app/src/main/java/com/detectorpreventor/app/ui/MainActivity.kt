@@ -1,8 +1,6 @@
 package com.detectorpreventor.app.ui
 
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -33,6 +31,7 @@ import com.detectorpreventor.app.ui.theme.BackgroundDark
 import com.detectorpreventor.app.ui.theme.DetectorPreventorTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -181,7 +180,7 @@ class MainActivity : ComponentActivity() {
                 "video" -> MediaType.VIDEO_MULTIMODAL
                 else -> MediaType.IMAGE_ONLY
             }
-            simulateIncomingNotification(mType, isThreat, sender, text)
+            simulateIncomingNotification(mType, isThreat, sender, text, isFaceDiscard)
             return
         }
 
@@ -239,13 +238,7 @@ class MainActivity : ComponentActivity() {
                 var isFaceDetected = payload.faceDetected
                 val visionProb: Float? = if (payload.mediaType != MediaType.AUDIO_ONLY) {
                     if (isFaceDetected && faceBmp != null) {
-                        val prob = visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = true)
-                        if (prob == 0.0f) {
-                            isFaceDetected = false
-                            0.0f
-                        } else {
-                            prob
-                        }
+                        visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = false)
                     } else {
                         0.0f
                     }
@@ -273,14 +266,17 @@ class MainActivity : ComponentActivity() {
                     visionProb = visionProb,
                     isFaceDetected = isFaceDetected
                 )
+                Log.i(TAG, "Riesgo calculado (${payload.filename}) -> tipo=${payload.mediaType}, rostro=$isFaceDetected, audioProb=$audioProb, visionProb=$visionProb, global=${fusionResult.globalRiskPercentage}%")
 
-                lifecycleScope.launch(Dispatchers.Main) {
-                    currentPayload = payload
-                    currentFusionResult = fusionResult
-                    activeScreen = ScreenNav.Scanner
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing && !isDestroyed) {
+                        currentPayload = payload
+                        currentFusionResult = fusionResult
+                        activeScreen = ScreenNav.Scanner
+                    }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error procesando el archivo: ${e.message}")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error procesando el archivo: ${t.message}", t)
             }
         }
     }
@@ -288,74 +284,80 @@ class MainActivity : ComponentActivity() {
     private fun runSampleAnalysis(sampleType: String, index: Int) {
         currentlyInspectedNotificationId = null
         lifecycleScope.launch(Dispatchers.Default) {
-            val sampleUri = Uri.parse("content://com.detectorpreventor.app.samples/$sampleType/$index")
-            val mime = when (sampleType) {
-                "audio" -> "audio/opus"
-                "image" -> "image/jpeg"
-                else -> "video/mp4"
-            }
-
-            var payload = mediaRouter.processIncomingUri(sampleUri, mime)
-
-            val sampleName = when (sampleType) {
-                "audio" -> when (index) {
-                    1 -> "Muestra 1: Voz Humana Real (ASVspoof Bonafide).opus"
-                    2 -> "Muestra 2: Clonación por IA (ASVspoof Deepfake).opus"
-                    3 -> "Muestra 3: Síntesis de Texto a Voz (TTS AI).wav"
-                    4 -> "Muestra 4: Nota de Voz WhatsApp Replicada.opus"
-                    else -> "Muestra 5: Conversación Telefónica Auténtica.mp3"
+            try {
+                val sampleUri = Uri.parse("content://com.detectorpreventor.app.samples/$sampleType/$index")
+                val mime = when (sampleType) {
+                    "audio" -> "audio/opus"
+                    "image" -> "image/jpeg"
+                    else -> "video/mp4"
                 }
-                "image" -> when (index) {
-                    1 -> "Muestra 1: Retrato Real Prístino (FF++).jpg"
-                    2 -> "Muestra 2: Manipulación FaceSwap AI.jpg"
-                    3 -> "Muestra 3: Rostro Sintético GAN (CIFAKE).png"
-                    4 -> "Muestra 4: Reenactamiento Face2Face.jpg"
-                    else -> "Muestra 5: Fotografía HD Original.jpg"
-                }
-                else -> when (index) {
-                    1 -> "Muestra 1: Entrevista Real YouTube (FF++).mp4"
-                    2 -> "Muestra 2: Sincronización Labial LipSync.mp4"
-                    3 -> "Muestra 3: FaceSwap HD Video.mp4"
-                    4 -> "Muestra 4: Avatar IA Multimodal Completo.mp4"
-                    else -> "Muestra 5: Clip de Cámara Frontal Auténtico.mp4"
-                }
-            }
 
-            payload = payload.copy(filename = sampleName)
+                var payload = mediaRouter.processIncomingUri(sampleUri, mime)
 
-            val audioProb: Float? = if (payload.mediaType != MediaType.IMAGE_ONLY) {
-                payload.audioSpectrogram?.let {
-                    audioClassifier.classifySpectrogram(it, payload.filename)
+                val sampleName = when (sampleType) {
+                    "audio" -> when (index) {
+                        1 -> "Muestra 1: Voz Humana Real (ASVspoof Bonafide).opus"
+                        2 -> "Muestra 2: Clonación por IA (ASVspoof Deepfake).opus"
+                        3 -> "Muestra 3: Síntesis de Texto a Voz (TTS AI).wav"
+                        4 -> "Muestra 4: Nota de Voz WhatsApp Replicada.opus"
+                        else -> "Muestra 5: Conversación Telefónica Auténtica.mp3"
+                    }
+                    "image" -> when (index) {
+                        1 -> "Muestra 1: Retrato Real Prístino (FF++).jpg"
+                        2 -> "Muestra 2: Manipulación FaceSwap AI.jpg"
+                        3 -> "Muestra 3: Rostro Sintético GAN (CIFAKE).png"
+                        4 -> "Muestra 4: Reenactamiento Face2Face.jpg"
+                        else -> "Muestra 5: Fotografía HD Original.jpg"
+                    }
+                    else -> when (index) {
+                        1 -> "Muestra 1: Entrevista Real YouTube (FF++).mp4"
+                        2 -> "Muestra 2: Sincronización Labial LipSync.mp4"
+                        3 -> "Muestra 3: FaceSwap HD Video.mp4"
+                        4 -> "Muestra 4: Avatar IA Multimodal Completo.mp4"
+                        else -> "Muestra 5: Clip de Cámara Frontal Auténtico.mp4"
+                    }
                 }
-            } else null
 
-            val faceBmp = payload.faceKeyframe
-            val visionProb: Float? = if (payload.mediaType != MediaType.AUDIO_ONLY) {
-                if (payload.faceDetected && faceBmp != null) {
-                    visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = false)
-                } else if (!payload.faceDetected) {
-                    0.0f
+                payload = payload.copy(filename = sampleName)
+
+                val audioProb: Float? = if (payload.mediaType != MediaType.IMAGE_ONLY) {
+                    payload.audioSpectrogram?.let {
+                        audioClassifier.classifySpectrogram(it, payload.filename)
+                    }
                 } else null
-            } else null
 
-            val visionGradCam = visionClassifier.getLastGradCamHeatmap()
-            val audioGradCam = audioClassifier.getLastGradCamHeatmap()
-            val primaryGradCam = if (payload.mediaType == MediaType.AUDIO_ONLY) audioGradCam else (visionGradCam ?: audioGradCam)
-            payload = payload.copy(
-                gradCamBitmap = primaryGradCam,
-                audioGradCamBitmap = audioGradCam
-            )
+                val faceBmp = payload.faceKeyframe
+                val visionProb: Float? = if (payload.mediaType != MediaType.AUDIO_ONLY) {
+                    if (payload.faceDetected && faceBmp != null) {
+                        visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = false)
+                    } else if (!payload.faceDetected) {
+                        0.0f
+                    } else null
+                } else null
 
-            val fusionResult = RiskScorer.calculateGlobalRisk(
-                audioProb = audioProb,
-                visionProb = visionProb,
-                isFaceDetected = payload.faceDetected
-            )
+                val visionGradCam = visionClassifier.getLastGradCamHeatmap()
+                val audioGradCam = audioClassifier.getLastGradCamHeatmap()
+                val primaryGradCam = if (payload.mediaType == MediaType.AUDIO_ONLY) audioGradCam else (visionGradCam ?: audioGradCam)
+                payload = payload.copy(
+                    gradCamBitmap = primaryGradCam,
+                    audioGradCamBitmap = audioGradCam
+                )
 
-            lifecycleScope.launch(Dispatchers.Main) {
-                currentPayload = payload
-                currentFusionResult = fusionResult
-                activeScreen = ScreenNav.Scanner
+                val fusionResult = RiskScorer.calculateGlobalRisk(
+                    audioProb = audioProb,
+                    visionProb = visionProb,
+                    isFaceDetected = payload.faceDetected
+                )
+
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing && !isDestroyed) {
+                        currentPayload = payload
+                        currentFusionResult = fusionResult
+                        activeScreen = ScreenNav.Scanner
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error ejecutando analisis de muestra ($sampleType/$index): ${t.message}", t)
             }
         }
     }
@@ -400,185 +402,207 @@ class MainActivity : ComponentActivity() {
     private fun inspectNotification(notif: InterceptedNotification) {
         currentlyInspectedNotificationId = notif.id
         lifecycleScope.launch(Dispatchers.Default) {
-            if (notif.isFaceDiscarded()) {
-                val payload = ProcessedMediaPayload(
-                    mediaType = MediaType.IMAGE_ONLY,
-                    audioSpectrogram = null,
-                    faceKeyframe = NotificationMediaCache.getFaceBitmap(notif.id),
-                    filename = "${notif.appName}: ${notif.sender} - ${notif.text}",
-                    faceDetected = false,
-                    discardReason = "Descarte automático BlazeFace: Ausencia de rostro humano confirmado por Edge AI."
-                )
-                val fusion = notif.fusionResult ?: RiskScorer.calculateGlobalRisk(
-                    audioProb = null,
-                    visionProb = null,
-                    isFaceDetected = false
-                )
-                lifecycleScope.launch(Dispatchers.Main) {
-                    currentPayload = payload
-                    currentFusionResult = fusion
-                    activeScreen = ScreenNav.Scanner
-                }
-                return@launch
-            }
-
-            if (notif.mediaType == MediaType.UNKNOWN) {
-                val fusionResult = notif.fusionResult ?: FusionResult(
-                    globalRiskPercentage = notif.riskScore,
-                    audioFraudProb = 0.0f,
-                    visionFraudProb = 0.0f,
-                    riskLevel = if (notif.riskScore >= 70f) RiskLevel.ALTO else if (notif.riskScore >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO,
-                    weightAudio = 0.5f,
-                    weightVision = 0.5f,
-                    diagnosticSummary = notif.text
-                )
-                val payload = ProcessedMediaPayload(
-                    mediaType = MediaType.UNKNOWN,
-                    audioSpectrogram = null,
-                    faceKeyframe = null,
-                    filename = "${notif.appName}: ${notif.sender}",
-                    faceDetected = false,
-                    discardReason = "Análisis contextual de texto y enlace web (sin archivo multimedia adjunto)"
-                )
-                lifecycleScope.launch(Dispatchers.Main) {
-                    currentPayload = payload
-                    currentFusionResult = fusionResult
-                    activeScreen = ScreenNav.Scanner
-                }
-                return@launch
-            }
-
-            // Auto-resolve if pending before inspecting
-            val currentNotif = if (notif.isPendingDownload()) {
-                val resolved = NotificationRepository.resolveSinglePendingNotification(this@MainActivity, notif)
-                NotificationRepository.updateNotification(resolved)
-                resolved
-            } else {
-                notif
-            }
-
-            val sampleUri = Uri.parse("content://com.detectorpreventor.app.notifications/${currentNotif.id}")
-            val mime = when (currentNotif.mediaType) {
-                MediaType.AUDIO_ONLY -> "audio/opus"
-                MediaType.VIDEO_MULTIMODAL -> "video/mp4"
-                else -> "image/jpeg"
-            }
-            var payload = mediaRouter.processIncomingUri(sampleUri, mime)
-            payload = payload.copy(filename = "${currentNotif.appName}: ${currentNotif.sender} - ${currentNotif.text}")
-
-            val audioProb: Float? = if (payload.mediaType != MediaType.IMAGE_ONLY) {
-                payload.audioSpectrogram?.let {
-                    audioClassifier.classifySpectrogram(it, payload.filename)
-                }
-            } else null
-
-            val faceBmp = payload.faceKeyframe
-            var isFaceDetected = payload.faceDetected
-            val visionProb: Float? = if (payload.mediaType != MediaType.AUDIO_ONLY) {
-                if (isFaceDetected && faceBmp != null) {
-                    val prob = visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = true)
-                    if (prob == 0.0f) {
+            try {
+                if (notif.isFaceDiscarded()) {
+                    val payload = ProcessedMediaPayload(
+                        mediaType = MediaType.IMAGE_ONLY,
+                        audioSpectrogram = null,
+                        faceKeyframe = NotificationMediaCache.getFaceBitmap(this@MainActivity, notif.id),
+                        filename = "${notif.appName}: ${notif.sender} - ${notif.text}",
+                        faceDetected = false,
+                        discardReason = "Descarte automático BlazeFace: Ausencia de rostro humano confirmado por Edge AI."
+                    )
+                    val fusion = notif.fusionResult ?: RiskScorer.calculateGlobalRisk(
+                        audioProb = null,
+                        visionProb = null,
                         isFaceDetected = false
-                        0.0f
-                    } else {
-                        prob
+                    )
+                    withContext(Dispatchers.Main) {
+                        if (!isFinishing && !isDestroyed) {
+                            currentPayload = payload
+                            currentFusionResult = fusion
+                            activeScreen = ScreenNav.Scanner
+                        }
                     }
-                } else {
-                    0.0f
+                    return@launch
                 }
-            } else null
 
-            val visionGradCam = if (isFaceDetected) visionClassifier.getLastGradCamHeatmap() else null
-            val audioGradCam = audioClassifier.getLastGradCamHeatmap()
-            val primaryGradCam = if (payload.mediaType == MediaType.AUDIO_ONLY) {
-                audioGradCam
-            } else if (!isFaceDetected) {
-                null
-            } else {
-                visionGradCam ?: audioGradCam
-            }
+                if (notif.mediaType == MediaType.UNKNOWN) {
+                    val fusionResult = notif.fusionResult ?: FusionResult(
+                        globalRiskPercentage = notif.riskScore,
+                        audioFraudProb = 0.0f,
+                        visionFraudProb = 0.0f,
+                        riskLevel = if (notif.riskScore >= 70f) RiskLevel.ALTO else if (notif.riskScore >= 35f) RiskLevel.MEDIO else RiskLevel.BAJO,
+                        weightAudio = 0.5f,
+                        weightVision = 0.5f,
+                        diagnosticSummary = notif.text
+                    )
+                    val payload = ProcessedMediaPayload(
+                        mediaType = MediaType.UNKNOWN,
+                        audioSpectrogram = null,
+                        faceKeyframe = null,
+                        filename = "${notif.appName}: ${notif.sender}",
+                        faceDetected = false,
+                        discardReason = "Análisis contextual de texto y enlace web (sin archivo multimedia adjunto)"
+                    )
+                    withContext(Dispatchers.Main) {
+                        if (!isFinishing && !isDestroyed) {
+                            currentPayload = payload
+                            currentFusionResult = fusionResult
+                            activeScreen = ScreenNav.Scanner
+                        }
+                    }
+                    return@launch
+                }
 
-            payload = payload.copy(
-                faceDetected = isFaceDetected,
-                discardReason = if (!isFaceDetected) "Descarte automático: No se detectó rostro humano" else payload.discardReason,
-                gradCamBitmap = primaryGradCam,
-                audioGradCamBitmap = audioGradCam
-            )
+                // Auto-resolve if pending before inspecting
+                val currentNotif = if (notif.isPendingDownload()) {
+                    val resolved = NotificationRepository.resolveSinglePendingNotification(this@MainActivity, notif)
+                    NotificationRepository.updateNotification(resolved)
+                    resolved
+                } else {
+                    notif
+                }
 
-            val fusionResult = if (currentNotif.mediaType == MediaType.VIDEO_MULTIMODAL) {
-                RiskScorer.calculateVideoRisk(audioProb, listOfNotNull(visionProb), isFaceDetected = isFaceDetected)
-            } else {
-                RiskScorer.calculateGlobalRisk(audioProb, visionProb, isFaceDetected = isFaceDetected)
-            }
+                val sampleUri = Uri.parse("content://com.detectorpreventor.app.notifications/${currentNotif.id}")
+                val mime = when (currentNotif.mediaType) {
+                    MediaType.AUDIO_ONLY -> "audio/opus"
+                    MediaType.VIDEO_MULTIMODAL -> "video/mp4"
+                    else -> "image/jpeg"
+                }
+                var payload = mediaRouter.processIncomingUri(sampleUri, mime)
+                payload = payload.copy(filename = "${currentNotif.appName}: ${currentNotif.sender} - ${currentNotif.text}")
 
-            val resolvedNotif = currentNotif.copy(
-                riskScore = fusionResult.globalRiskPercentage,
-                isThreat = fusionResult.globalRiskPercentage >= 70f,
-                fusionResult = fusionResult
-            )
-            NotificationRepository.updateNotification(resolvedNotif)
+                val audioProb: Float? = if (payload.mediaType != MediaType.IMAGE_ONLY) {
+                    payload.audioSpectrogram?.let {
+                        audioClassifier.classifySpectrogram(it, payload.filename)
+                    }
+                } else null
 
-            lifecycleScope.launch(Dispatchers.Main) {
-                currentPayload = payload
-                currentFusionResult = fusionResult
-                activeScreen = ScreenNav.Scanner
+                val faceBmp = payload.faceKeyframe
+                val isFaceDetected = payload.faceDetected
+                val visionProb: Float? = if (payload.mediaType != MediaType.AUDIO_ONLY) {
+                    if (isFaceDetected && faceBmp != null) {
+                        visionClassifier.classifyFaceKeyframe(faceBmp, payload.filename, requireFaceDetection = false)
+                    } else {
+                        0.0f
+                    }
+                } else null
+
+                val visionGradCam = if (isFaceDetected) visionClassifier.getLastGradCamHeatmap() else null
+                val audioGradCam = audioClassifier.getLastGradCamHeatmap()
+                val primaryGradCam = if (payload.mediaType == MediaType.AUDIO_ONLY) {
+                    audioGradCam
+                } else if (!isFaceDetected) {
+                    null
+                } else {
+                    visionGradCam ?: audioGradCam
+                }
+
+                payload = payload.copy(
+                    faceDetected = isFaceDetected,
+                    discardReason = if (!isFaceDetected) "Descarte automático: No se detectó rostro humano" else payload.discardReason,
+                    gradCamBitmap = primaryGradCam,
+                    audioGradCamBitmap = audioGradCam
+                )
+
+                val fusionResult = if (currentNotif.mediaType == MediaType.VIDEO_MULTIMODAL) {
+                    RiskScorer.calculateVideoRisk(audioProb, listOfNotNull(visionProb), isFaceDetected = isFaceDetected)
+                } else {
+                    RiskScorer.calculateGlobalRisk(audioProb, visionProb, isFaceDetected = isFaceDetected)
+                }
+
+                val resolvedNotif = currentNotif.copy(
+                    riskScore = fusionResult.globalRiskPercentage,
+                    isThreat = fusionResult.globalRiskPercentage >= 70f,
+                    fusionResult = fusionResult
+                )
+                NotificationRepository.updateNotification(resolvedNotif)
+
+                withContext(Dispatchers.Main) {
+                    if (!isFinishing && !isDestroyed) {
+                        currentPayload = payload
+                        currentFusionResult = fusionResult
+                        activeScreen = ScreenNav.Scanner
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error inspeccionando notificacion (${notif.id}): ${t.message}", t)
             }
         }
     }
 
-    private fun simulateIncomingNotification(mediaType: MediaType, isThreat: Boolean, sender: String, text: String) {
+    private fun simulateIncomingNotification(
+        mediaType: MediaType,
+        isThreat: Boolean,
+        sender: String,
+        text: String,
+        forceFaceDiscard: Boolean = false
+    ) {
         lifecycleScope.launch(Dispatchers.Default) {
-            val notifId = UUID.randomUUID().toString()
-            val now = System.currentTimeMillis()
-            val isFaceDiscard = text.contains("sin rostro", ignoreCase = true) || text.contains("descarte", ignoreCase = true) || text.contains("paisaje", ignoreCase = true)
+            try {
+                val notifId = UUID.randomUUID().toString()
+                val now = System.currentTimeMillis()
+                val isFaceDiscard = forceFaceDiscard ||
+                    text.contains("sin rostro", ignoreCase = true) ||
+                    text.contains("descarte", ignoreCase = true) ||
+                    text.contains("paisaje", ignoreCase = true)
 
-            val mediaUriToStore = when (mediaType) {
-                MediaType.AUDIO_ONLY -> if (isThreat) "asset://samples/06_clonacion_ia_spoof_tts_1_spec.png" else "asset://samples/01_voz_humana_real_bonafide_1_spec.png"
-                MediaType.IMAGE_ONLY -> if (isFaceDiscard) "asset://samples/01_retrato_humano_real_1.jpg" else if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
-                MediaType.VIDEO_MULTIMODAL -> if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
-                else -> null
-            }
+                val mediaUriToStore = when (mediaType) {
+                    MediaType.AUDIO_ONLY -> if (isThreat) "asset://samples/06_clonacion_ia_spoof_tts_1_spec.png" else "asset://samples/01_voz_humana_real_bonafide_1_spec.png"
+                    MediaType.IMAGE_ONLY -> if (isFaceDiscard) "asset://samples/01_retrato_humano_real_1.jpg" else if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
+                    MediaType.VIDEO_MULTIMODAL -> if (isThreat) "asset://samples/06_deepfake_rostro_ia_1.jpg" else "asset://samples/01_retrato_humano_real_1.jpg"
+                    else -> null
+                }
 
-            val pendingDesc = when (mediaType) {
-                MediaType.AUDIO_ONLY -> "$text (Descargando nota de voz en WhatsApp...)"
-                MediaType.IMAGE_ONLY -> if (isFaceDiscard) "$text (Descargando imagen para BlazeFace...)" else "$text (Descargando fotografía en WhatsApp...)"
-                MediaType.VIDEO_MULTIMODAL -> "$text (Descargando video en WhatsApp...)"
-                else -> "$text (Descargando...)"
-            }
-            val pendingNotif = InterceptedNotification(
-                id = notifId,
-                appName = "WhatsApp",
-                packageName = "com.whatsapp",
-                sender = sender,
-                text = pendingDesc,
-                timestamp = now,
-                mediaType = mediaType,
-                riskScore = 0.0f,
-                isThreat = isThreat && !isFaceDiscard,
-                mediaUriString = mediaUriToStore,
-                fusionResult = FusionResult(
-                    globalRiskPercentage = 0.0f,
-                    audioFraudProb = 0.0f,
-                    visionFraudProb = 0.0f,
-                    riskLevel = RiskLevel.BAJO,
-                    weightAudio = if (mediaType == MediaType.AUDIO_ONLY) 1.0f else 0.55f,
-                    weightVision = if (mediaType == MediaType.IMAGE_ONLY) 1.0f else 0.45f,
-                    diagnosticSummary = if (isFaceDiscard) "BlazeFace: Verificando fisonomía facial humana..." else "Descargando archivo multimedia en segundo plano desde WhatsApp...",
-                    wasFaceDiscarded = isFaceDiscard
+                val pendingDesc = when (mediaType) {
+                    MediaType.AUDIO_ONLY -> "$text (Descargando nota de voz en WhatsApp...)"
+                    MediaType.IMAGE_ONLY -> if (isFaceDiscard) "$text (Descargando imagen para BlazeFace...)" else "$text (Descargando fotografía en WhatsApp...)"
+                    MediaType.VIDEO_MULTIMODAL -> "$text (Descargando video en WhatsApp...)"
+                    else -> "$text (Descargando...)"
+                }
+                val pendingNotif = InterceptedNotification(
+                    id = notifId,
+                    appName = "WhatsApp",
+                    packageName = "com.whatsapp",
+                    sender = sender,
+                    text = pendingDesc,
+                    timestamp = now,
+                    mediaType = mediaType,
+                    riskScore = 0.0f,
+                    isThreat = isThreat && !isFaceDiscard,
+                    mediaUriString = mediaUriToStore,
+                    fusionResult = FusionResult(
+                        globalRiskPercentage = 0.0f,
+                        audioFraudProb = 0.0f,
+                        visionFraudProb = 0.0f,
+                        riskLevel = RiskLevel.BAJO,
+                        weightAudio = if (mediaType == MediaType.AUDIO_ONLY) 1.0f else 0.55f,
+                        weightVision = if (mediaType == MediaType.IMAGE_ONLY) 1.0f else 0.45f,
+                        diagnosticSummary = if (isFaceDiscard) "BlazeFace: Verificando fisonomía facial humana..." else "Descargando archivo multimedia en segundo plano desde WhatsApp...",
+                        wasFaceDiscarded = isFaceDiscard
+                    )
                 )
-            )
-            NotificationRepository.addNotification(pendingNotif)
+                NotificationRepository.addNotification(pendingNotif)
 
-            // Simulated download delay
-            kotlinx.coroutines.delay(1000L)
+                // Simulated download delay
+                kotlinx.coroutines.delay(1000L)
 
-            val resolvedItem = NotificationRepository.resolveSinglePendingNotification(this@MainActivity, pendingNotif)
-            val finalNotif = resolvedItem.copy(
-                text = "$text | ${resolvedItem.text}",
-                mediaUriString = mediaUriToStore
-            )
-            NotificationRepository.updateNotification(finalNotif)
-            Log.i(TAG, "Notificacion simulada resuelta exitosamente por TFLite: [WhatsApp] $sender - Riesgo: ${finalNotif.riskScore}%")
+                if (!NotificationRepository.hasNotification(notifId)) {
+                    Log.i(TAG, "Notificacion simulada $notifId descartada antes de resolucion.")
+                    return@launch
+                }
+
+                val resolvedItem = NotificationRepository.resolveSinglePendingNotification(this@MainActivity, pendingNotif)
+                val finalNotif = resolvedItem.copy(
+                    text = "$text | ${resolvedItem.text}",
+                    mediaUriString = mediaUriToStore
+                )
+                NotificationRepository.updateNotification(finalNotif)
+                Log.i(TAG, "Notificacion simulada resuelta exitosamente por TFLite: [WhatsApp] $sender - Riesgo: ${finalNotif.riskScore}%")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error simulando notificacion entrante: ${t.message}", t)
+            }
         }
     }
 

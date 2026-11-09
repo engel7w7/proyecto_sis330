@@ -71,7 +71,9 @@ object AudioSpectrogramGenerator {
     }
 
     private fun decodeAudioUriToPcm(context: Context, uri: Uri): FloatArray? {
-        val tempFile = File(context.cacheDir, "temp_decode_${System.currentTimeMillis()}.audio")
+        val tempFile = File.createTempFile("temp_decode_", ".audio", context.cacheDir)
+        var extractor: MediaExtractor? = null
+        var decoder: MediaCodec? = null
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
@@ -79,13 +81,14 @@ object AudioSpectrogramGenerator {
                 }
             } ?: return null
 
-            val extractor = MediaExtractor()
-            extractor.setDataSource(tempFile.absolutePath)
+            val localExtractor = MediaExtractor()
+            extractor = localExtractor
+            localExtractor.setDataSource(tempFile.absolutePath)
 
             var audioTrackIndex = -1
             var inputFormat: MediaFormat? = null
-            for (i in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(i)
+            for (i in 0 until localExtractor.trackCount) {
+                val format = localExtractor.getTrackFormat(i)
                 val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
                 if (mime.startsWith("audio/")) {
                     audioTrackIndex = i
@@ -95,43 +98,66 @@ object AudioSpectrogramGenerator {
             }
 
             if (audioTrackIndex == -1 || inputFormat == null) {
-                extractor.release()
                 return null
             }
 
-            extractor.selectTrack(audioTrackIndex)
+            localExtractor.selectTrack(audioTrackIndex)
             val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: ""
-            val decoder = MediaCodec.createDecoderByType(mime)
-            decoder.configure(inputFormat, null, null, 0)
-            decoder.start()
+            val localDecoder = MediaCodec.createDecoderByType(mime)
+            decoder = localDecoder
+            localDecoder.configure(inputFormat, null, null, 0)
+            localDecoder.start()
 
-            val srcSampleRate = if (inputFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) else 44100
-            val channelCount = if (inputFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 1
+            val srcSampleRate = if (inputFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            } else {
+                44100
+            }
+            val channelCount = maxOf(
+                1,
+                if (inputFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+                    inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                } else {
+                    1
+                }
+            )
 
             val bufferInfo = MediaCodec.BufferInfo()
             val rawPcmSamples = mutableListOf<Float>()
-            var isEos = false
+            var sawInputEos = false
+            var sawOutputEos = false
+            var noProgressLoops = 0
+            val maxNoProgressLoops = 250
             val timeoutUs = 5000L
 
-            while (!isEos && rawPcmSamples.size < (TARGET_SAMPLES * 3)) {
-                val inIndex = decoder.dequeueInputBuffer(timeoutUs)
-                if (inIndex >= 0) {
-                    val inputBuffer = decoder.getInputBuffer(inIndex)
-                    if (inputBuffer != null) {
-                        val sampleSize = extractor.readSampleData(inputBuffer, 0)
-                        if (sampleSize < 0) {
-                            decoder.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
-                            isEos = true
+            while (!sawOutputEos && rawPcmSamples.size < (TARGET_SAMPLES * 3) && noProgressLoops < maxNoProgressLoops) {
+                var madeProgress = false
+
+                if (!sawInputEos) {
+                    val inIndex = localDecoder.dequeueInputBuffer(timeoutUs)
+                    if (inIndex >= 0) {
+                        madeProgress = true
+                        val inputBuffer = localDecoder.getInputBuffer(inIndex)
+                        if (inputBuffer != null) {
+                            val sampleSize = localExtractor.readSampleData(inputBuffer, 0)
+                            if (sampleSize < 0) {
+                                localDecoder.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                sawInputEos = true
+                            } else {
+                                localDecoder.queueInputBuffer(inIndex, 0, sampleSize, localExtractor.sampleTime, 0)
+                                localExtractor.advance()
+                            }
                         } else {
-                            decoder.queueInputBuffer(inIndex, 0, sampleSize, extractor.sampleTime, 0)
-                            extractor.advance()
+                            localDecoder.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            sawInputEos = true
                         }
                     }
                 }
 
-                var outIndex = decoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
+                var outIndex = localDecoder.dequeueOutputBuffer(bufferInfo, timeoutUs)
                 while (outIndex >= 0) {
-                    val outputBuffer = decoder.getOutputBuffer(outIndex)
+                    madeProgress = true
+                    val outputBuffer = localDecoder.getOutputBuffer(outIndex)
                     if (outputBuffer != null && bufferInfo.size > 0) {
                         outputBuffer.position(bufferInfo.offset)
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
@@ -141,29 +167,38 @@ object AudioSpectrogramGenerator {
                         while (shortBuffer.hasRemaining()) {
                             if (channelCount > 1) {
                                 var sum = 0f
+                                var count = 0
                                 for (c in 0 until channelCount) {
                                     if (shortBuffer.hasRemaining()) {
                                         sum += shortBuffer.get() / 32768.0f
+                                        count++
                                     }
                                 }
-                                rawPcmSamples.add(sum / channelCount)
+                                if (count > 0) {
+                                    rawPcmSamples.add(sum / count)
+                                }
                             } else {
                                 rawPcmSamples.add(shortBuffer.get() / 32768.0f)
                             }
                         }
                     }
-                    decoder.releaseOutputBuffer(outIndex, false)
+                    localDecoder.releaseOutputBuffer(outIndex, false)
                     if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                        isEos = true
+                        sawOutputEos = true
                         break
                     }
-                    outIndex = decoder.dequeueOutputBuffer(bufferInfo, 0)
+                    if (rawPcmSamples.size >= (TARGET_SAMPLES * 3)) {
+                        break
+                    }
+                    outIndex = localDecoder.dequeueOutputBuffer(bufferInfo, 0)
                 }
-            }
 
-            decoder.stop()
-            decoder.release()
-            extractor.release()
+                if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED || outIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                    madeProgress = true
+                }
+
+                noProgressLoops = if (madeProgress) 0 else (noProgressLoops + 1)
+            }
 
             if (rawPcmSamples.isEmpty()) return null
 
@@ -173,12 +208,27 @@ object AudioSpectrogramGenerator {
             } else {
                 originalArray
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "Error en decodificador MediaCodec: ${e.message}")
             return null
         } finally {
-            if (tempFile.exists()) {
-                tempFile.delete()
+            try {
+                decoder?.stop()
+            } catch (_: Throwable) {
+            }
+            try {
+                decoder?.release()
+            } catch (_: Throwable) {
+            }
+            try {
+                extractor?.release()
+            } catch (_: Throwable) {
+            }
+            try {
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
+            } catch (_: Throwable) {
             }
         }
     }
@@ -206,8 +256,10 @@ object AudioSpectrogramGenerator {
     }
 
     private fun resampleAudio(input: FloatArray, srcRate: Int, dstRate: Int): FloatArray {
+        if (srcRate <= 0 || dstRate <= 0 || input.isEmpty()) return input
         val ratio = dstRate.toDouble() / srcRate.toDouble()
         val outLength = (input.size * ratio).toInt()
+        if (outLength <= 0) return FloatArray(0)
         val output = FloatArray(outLength)
 
         for (i in 0 until outLength) {
@@ -221,18 +273,25 @@ object AudioSpectrogramGenerator {
     }
 
     private fun computeMelSpectrogramAndFeatures(audioData: FloatArray): AudioAnalysisResult {
+        val safeAudio = if (audioData.size < FFT_SIZE) {
+            FloatArray(FFT_SIZE).also { padded ->
+                System.arraycopy(audioData, 0, padded, 0, audioData.size)
+            }
+        } else {
+            audioData
+        }
         var maxVal = 0.0f
-        for (sample in audioData) {
+        for (sample in safeAudio) {
             val abs = abs(sample)
             if (abs > maxVal) maxVal = abs
         }
         if (maxVal > 0.001f) {
-            for (i in audioData.indices) {
-                audioData[i] = audioData[i] / maxVal
+            for (i in safeAudio.indices) {
+                safeAudio[i] = safeAudio[i] / maxVal
             }
         }
 
-        val numFrames = (audioData.size - FFT_SIZE) / HOP_SIZE + 1
+        val numFrames = maxOf(1, (safeAudio.size - FFT_SIZE) / HOP_SIZE + 1)
         val window = FloatArray(FFT_SIZE) { i ->
             (0.5 * (1.0 - cos(2.0 * Math.PI * i / (FFT_SIZE - 1)))).toFloat()
         }
@@ -246,7 +305,9 @@ object AudioSpectrogramGenerator {
         for (t in 0 until numFrames) {
             val offset = t * HOP_SIZE
             for (i in 0 until FFT_SIZE) {
-                real[i] = audioData[offset + i] * window[i]
+                val sampleIdx = offset + i
+                val s = if (sampleIdx < safeAudio.size) safeAudio[sampleIdx] else 0.0f
+                real[i] = s * window[i]
                 imag[i] = 0.0f
             }
 

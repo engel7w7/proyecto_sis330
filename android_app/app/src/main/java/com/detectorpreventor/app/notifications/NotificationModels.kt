@@ -100,7 +100,7 @@ data class InterceptedNotification(
             }
 
             val uriStr = if (obj.has("mediaUriString") && !obj.isNull("mediaUriString")) {
-                obj.optString("mediaUriString", null)
+                obj.optString("mediaUriString", "").takeIf { it.isNotBlank() && it != "null" }
             } else null
 
             return InterceptedNotification(
@@ -127,6 +127,7 @@ object NotificationRepository {
     private const val MAX_SAVED_ITEMS = 50
 
     private var prefs: SharedPreferences? = null
+    private val repoLock = Any()
 
     private val _notifications = MutableStateFlow<List<InterceptedNotification>>(emptyList())
     val notifications: StateFlow<List<InterceptedNotification>> = _notifications.asStateFlow()
@@ -142,12 +143,14 @@ object NotificationRepository {
 
     fun init(context: Context) {
         val app = context.applicationContext
-        prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        loadFromStorage()
+        synchronized(repoLock) {
+            prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            loadFromStorageLocked()
+        }
         autoResolvePendingNotifications(app)
     }
 
-    private fun loadFromStorage() {
+    private fun loadFromStorageLocked() {
         val savedBlocked = prefs?.getStringSet(KEY_BLOCKED_SENDERS, null)
         if (savedBlocked != null) {
             _blockedSenders.value = savedBlocked.toSet()
@@ -162,17 +165,17 @@ object NotificationRepository {
                 list.add(InterceptedNotification.fromJson(obj))
             }
             _notifications.value = list
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
 
-    private fun persistToStorage(list: List<InterceptedNotification>) {
+    private fun persistToStorageLocked(list: List<InterceptedNotification>) {
         val p = prefs ?: return
         try {
             val jsonArray = JSONArray()
             list.forEach { jsonArray.put(it.toJson()) }
             p.edit().putString(KEY_NOTIFS, jsonArray.toString()).apply()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
 
@@ -184,92 +187,119 @@ object NotificationRepository {
         _isServiceConnected.value = connected
     }
 
+    fun hasNotification(id: String): Boolean = synchronized(repoLock) {
+        _notifications.value.any { it.id == id }
+    }
+
     fun isSenderBlocked(sender: String?): Boolean {
         if (sender.isNullOrBlank()) return false
         val clean = sender.trim().lowercase()
-        return _blockedSenders.value.any { blocked ->
+        val blockedSnapshot = synchronized(repoLock) { _blockedSenders.value }
+        return blockedSnapshot.any { blocked ->
             clean.equals(blocked, ignoreCase = true) ||
-            clean.contains(blocked, ignoreCase = true) ||
-            blocked.contains(clean, ignoreCase = true)
+                clean.contains(blocked, ignoreCase = true) ||
+                blocked.contains(clean, ignoreCase = true)
         }
     }
 
     fun blockSender(sender: String) {
         val clean = sender.trim().lowercase()
         if (clean.isBlank()) return
-        val current = _blockedSenders.value.toMutableSet()
-        current.add(clean)
-        _blockedSenders.value = current
-        prefs?.edit()?.putStringSet(KEY_BLOCKED_SENDERS, current)?.apply()
+        synchronized(repoLock) {
+            val current = _blockedSenders.value.toMutableSet()
+            current.add(clean)
+            val frozen = current.toSet()
+            _blockedSenders.value = frozen
+            prefs?.edit()?.putStringSet(KEY_BLOCKED_SENDERS, frozen)?.apply()
+        }
     }
 
     fun unblockSender(sender: String) {
         val clean = sender.trim().lowercase()
-        val current = _blockedSenders.value.toMutableSet()
-        current.removeAll { it.equals(clean, ignoreCase = true) || clean.contains(it, ignoreCase = true) }
-        _blockedSenders.value = current
-        prefs?.edit()?.putStringSet(KEY_BLOCKED_SENDERS, current)?.apply()
+        synchronized(repoLock) {
+            val current = _blockedSenders.value.toMutableSet()
+            current.removeAll { it.equals(clean, ignoreCase = true) || clean.contains(it, ignoreCase = true) }
+            val frozen = current.toSet()
+            _blockedSenders.value = frozen
+            prefs?.edit()?.putStringSet(KEY_BLOCKED_SENDERS, frozen)?.apply()
+        }
     }
 
     fun clearBlockedSenders() {
-        _blockedSenders.value = emptySet()
-        prefs?.edit()?.remove(KEY_BLOCKED_SENDERS)?.apply()
+        synchronized(repoLock) {
+            _blockedSenders.value = emptySet()
+            prefs?.edit()?.remove(KEY_BLOCKED_SENDERS)?.apply()
+        }
     }
 
     fun removeNotification(id: String): Boolean {
-        val currentList = _notifications.value.toMutableList()
-        val index = currentList.indexOfFirst { it.id == id }
-        if (index != -1) {
-            val removed = currentList.removeAt(index)
-            _notifications.value = currentList
-            persistToStorage(currentList)
-            removed.mediaUriString?.let { uriStr ->
-                NotificationMediaCache.releaseFile(uriStr)
+        var removedItem: InterceptedNotification? = null
+        synchronized(repoLock) {
+            val currentList = _notifications.value.toMutableList()
+            val index = currentList.indexOfFirst { it.id == id }
+            if (index != -1) {
+                removedItem = currentList.removeAt(index)
+                _notifications.value = currentList
+                persistToStorageLocked(currentList)
             }
-            return true
         }
-        return false
+        val removed = removedItem ?: return false
+        removed.mediaUriString?.let { uriStr ->
+            NotificationMediaCache.releaseFile(uriStr)
+        }
+        return true
     }
 
     fun removeNotificationByFilenameOrSender(query: String): Boolean {
         if (query.isBlank()) return false
-        val currentList = _notifications.value.toMutableList()
-        val index = currentList.indexOfFirst { item ->
-            item.text.contains(query, ignoreCase = true) ||
+        var removedItem: InterceptedNotification? = null
+        synchronized(repoLock) {
+            val currentList = _notifications.value.toMutableList()
+            val index = currentList.indexOfFirst { item ->
+                item.text.contains(query, ignoreCase = true) ||
                     item.sender.contains(query, ignoreCase = true) ||
                     (item.mediaUriString != null && item.mediaUriString.contains(query, ignoreCase = true))
-        }
-        if (index != -1) {
-            val removed = currentList.removeAt(index)
-            _notifications.value = currentList
-            persistToStorage(currentList)
-            removed.mediaUriString?.let { uriStr ->
-                NotificationMediaCache.releaseFile(uriStr)
             }
-            return true
+            if (index != -1) {
+                removedItem = currentList.removeAt(index)
+                _notifications.value = currentList
+                persistToStorageLocked(currentList)
+            }
         }
-        return false
+        val removed = removedItem ?: return false
+        removed.mediaUriString?.let { uriStr ->
+            NotificationMediaCache.releaseFile(uriStr)
+        }
+        return true
     }
 
     fun updateNotification(item: InterceptedNotification) {
-        val currentList = _notifications.value.toMutableList()
-        val index = currentList.indexOfFirst { it.id == item.id }
-        if (index != -1) {
-            val existing = currentList[index]
-            val mergedItem = if (item.mediaUriString.isNullOrBlank() && !existing.mediaUriString.isNullOrBlank()) {
-                item.copy(mediaUriString = existing.mediaUriString)
+        synchronized(repoLock) {
+            val currentList = _notifications.value.toMutableList()
+            val index = currentList.indexOfFirst { it.id == item.id }
+            if (index != -1) {
+                val existing = currentList[index]
+                val mergedItem = if (item.mediaUriString.isNullOrBlank() && !existing.mediaUriString.isNullOrBlank()) {
+                    item.copy(mediaUriString = existing.mediaUriString)
+                } else {
+                    item
+                }
+                currentList[index] = mergedItem
+                _notifications.value = currentList
+                persistToStorageLocked(currentList)
             } else {
-                item
+                addNotificationLocked(item)
             }
-            currentList[index] = mergedItem
-            _notifications.value = currentList
-            persistToStorage(currentList)
-        } else {
-            addNotification(item)
         }
     }
 
     fun addNotification(item: InterceptedNotification) {
+        synchronized(repoLock) {
+            addNotificationLocked(item)
+        }
+    }
+
+    private fun addNotificationLocked(item: InterceptedNotification) {
         val currentList = _notifications.value.toMutableList()
 
         // 1. If exact ID match, replace in place
@@ -283,17 +313,17 @@ object NotificationRepository {
             }
             currentList[indexById] = mergedItem
             _notifications.value = currentList
-            persistToStorage(currentList)
+            persistToStorageLocked(currentList)
             return
         }
 
         // 2. If matching a recent pending item from the same contact/package/type, replace it
         val pendingIndex = currentList.indexOfFirst { existing ->
             existing.packageName == item.packageName &&
-                    existing.sender.equals(item.sender, ignoreCase = true) &&
-                    existing.mediaType == item.mediaType &&
-                    (existing.isPendingDownload() || existing.riskScore == 0.0f) &&
-                    kotlin.math.abs(item.timestamp - existing.timestamp) < 90000L
+                existing.sender.equals(item.sender, ignoreCase = true) &&
+                existing.mediaType == item.mediaType &&
+                (existing.isPendingDownload() || existing.riskScore == 0.0f) &&
+                kotlin.math.abs(item.timestamp - existing.timestamp) < 90000L
         }
         if (pendingIndex != -1) {
             val existing = currentList[pendingIndex]
@@ -304,16 +334,16 @@ object NotificationRepository {
             }
             currentList[pendingIndex] = mergedItem
             _notifications.value = currentList
-            persistToStorage(currentList)
+            persistToStorageLocked(currentList)
             return
         }
 
         // 3. Deduplicate exact duplicate texts arriving within 4 seconds
         val existingIndex = currentList.indexOfFirst { existing ->
             existing.packageName == item.packageName &&
-                    existing.sender.equals(item.sender, ignoreCase = true) &&
-                    existing.text.equals(item.text, ignoreCase = true) &&
-                    kotlin.math.abs(item.timestamp - existing.timestamp) < 4000L
+                existing.sender.equals(item.sender, ignoreCase = true) &&
+                existing.text.equals(item.text, ignoreCase = true) &&
+                kotlin.math.abs(item.timestamp - existing.timestamp) < 4000L
         }
 
         if (existingIndex != -1) {
@@ -324,32 +354,41 @@ object NotificationRepository {
             if (!existingHasMedia && newHasMedia) {
                 currentList[existingIndex] = item
                 _notifications.value = currentList
-                persistToStorage(currentList)
+                persistToStorageLocked(currentList)
             }
             return
         }
 
         val updatedList = (listOf(item) + currentList).take(MAX_SAVED_ITEMS)
         _notifications.value = updatedList
-        persistToStorage(updatedList)
+        persistToStorageLocked(updatedList)
     }
 
     fun autoResolvePendingNotifications(context: Context) {
-        val currentList = _notifications.value.toMutableList()
-        var hasChanges = false
+        val pendingItems = synchronized(repoLock) {
+            _notifications.value.filter { it.isPendingDownload() }
+        }
+        if (pendingItems.isEmpty()) return
 
-        for (i in currentList.indices) {
-            val item = currentList[i]
-            if (item.isPendingDownload()) {
-                val resolved = resolveSinglePendingNotification(context, item)
-                currentList[i] = resolved
-                hasChanges = true
-            }
+        val resolvedMap = HashMap<String, InterceptedNotification>(pendingItems.size)
+        for (item in pendingItems) {
+            resolvedMap[item.id] = resolveSinglePendingNotification(context, item)
         }
 
-        if (hasChanges) {
-            _notifications.value = currentList
-            persistToStorage(currentList)
+        synchronized(repoLock) {
+            val currentList = _notifications.value.toMutableList()
+            var hasChanges = false
+            for (i in currentList.indices) {
+                val resolved = resolvedMap[currentList[i].id]
+                if (resolved != null && currentList[i].isPendingDownload()) {
+                    currentList[i] = resolved
+                    hasChanges = true
+                }
+            }
+            if (hasChanges) {
+                _notifications.value = currentList
+                persistToStorageLocked(currentList)
+            }
         }
     }
 
@@ -514,7 +553,6 @@ object NotificationRepository {
             }
             MediaType.VIDEO_MULTIMODAL -> {
                 val faceAsset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
-                val audioAsset = if (isThreat) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png"
                 val uriStr = pending.mediaUriString ?: "asset://$faceAsset"
                 val risk = if (isThreat) 94.2f else 3.8f
                 val statusText = if (isThreat) {
@@ -570,8 +608,10 @@ object NotificationRepository {
     }
 
     fun clearNotifications() {
-        _notifications.value = emptyList()
-        prefs?.edit()?.remove(KEY_NOTIFS)?.apply()
+        synchronized(repoLock) {
+            _notifications.value = emptyList()
+            prefs?.edit()?.remove(KEY_NOTIFS)?.apply()
+        }
     }
 
     fun isPermissionGranted(context: Context): Boolean {
@@ -641,11 +681,11 @@ object NotificationMediaCache {
             } catch (e: Exception) {}
         }
 
-        faceBitmap?.let {
+        faceBitmap?.takeIf { !it.isRecycled && it.width > 0 && it.height > 0 }?.let {
             faceCache[notifId] = it
             if (context != null) saveBitmapToCache(context, "face_$notifId.png", it)
         }
-        audioBitmap?.let {
+        audioBitmap?.takeIf { !it.isRecycled && it.width > 0 && it.height > 0 }?.let {
             audioCache[notifId] = it
             if (context != null) saveBitmapToCache(context, "audio_$notifId.png", it)
         }
@@ -662,7 +702,12 @@ object NotificationMediaCache {
     fun getMediaUriString(notifId: String): String? = mediaUriCache[notifId]
 
     fun getFaceBitmap(context: Context? = null, notifId: String): Bitmap? {
-        faceCache[notifId]?.let { return it }
+        faceCache[notifId]?.let { cached ->
+            if (!cached.isRecycled && cached.width > 0 && cached.height > 0) {
+                return cached
+            }
+            faceCache.remove(notifId)
+        }
         if (context != null) {
             loadBitmapFromCache(context, "face_$notifId.png")?.let {
                 faceCache[notifId] = it
@@ -675,7 +720,12 @@ object NotificationMediaCache {
     fun getFaceBitmap(notifId: String): Bitmap? = getFaceBitmap(null, notifId)
 
     fun getAudioBitmap(context: Context? = null, notifId: String): Bitmap? {
-        audioCache[notifId]?.let { return it }
+        audioCache[notifId]?.let { cached ->
+            if (!cached.isRecycled && cached.width > 0 && cached.height > 0) {
+                return cached
+            }
+            audioCache.remove(notifId)
+        }
         if (context != null) {
             loadBitmapFromCache(context, "audio_$notifId.png")?.let {
                 audioCache[notifId] = it
@@ -690,22 +740,25 @@ object NotificationMediaCache {
     fun getAssetName(notifId: String): String? = assetNameCache[notifId]
 
     private fun saveBitmapToCache(context: Context, filename: String, bitmap: Bitmap) {
+        if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) return
         try {
             val file = java.io.File(context.cacheDir, filename)
             java.io.FileOutputStream(file).use { out ->
                 bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
         }
     }
 
     private fun loadBitmapFromCache(context: Context, filename: String): Bitmap? {
         return try {
             val file = java.io.File(context.cacheDir, filename)
-            if (file.exists() && file.length() > 0) {
-                android.graphics.BitmapFactory.decodeFile(file.absolutePath)
-            } else null
-        } catch (e: Exception) {
+            if (file.isFile && file.length() > 0) {
+                com.detectorpreventor.app.ml.TfliteExecutionLock.decodeSampledBitmapFromFile(file.absolutePath, 1024)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
             null
         }
     }

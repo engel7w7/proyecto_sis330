@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.Log
+import com.detectorpreventor.app.ml.TfliteExecutionLock
 import com.detectorpreventor.app.notifications.NotificationMediaCache
 import com.detectorpreventor.app.notifications.NotificationRepository
 import com.google.android.gms.tasks.Tasks
@@ -315,9 +316,7 @@ class MediaRouter(private val context: Context) {
 
     private fun loadBitmapFromUri(uri: Uri): Bitmap? {
         return try {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream)
-            }
+            TfliteExecutionLock.decodeSampledBitmapFromUri(context, uri, 1024)
         } catch (e: Exception) {
             Log.e(TAG, "Error decodificando bitmap desde Uri $uri: ${e.message}")
             null
@@ -346,53 +345,49 @@ class MediaRouter(private val context: Context) {
     }
 
     private fun extractFaceFromImageUri(uri: Uri): Pair<Bitmap, Boolean> {
+        var original: Bitmap? = null
         return try {
-            val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, boundsOptions)
-            }
-            var sampleSize = 1
-            val maxDim = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
-            while (maxDim / sampleSize > 1024) {
-                sampleSize *= 2
-            }
-            val decodeOptions = BitmapFactory.Options().apply {
-                inSampleSize = sampleSize
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            val original = context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, decodeOptions)
-            }
-
+            original = TfliteExecutionLock.decodeSampledBitmapFromUri(context, uri, 1024)
             if (original != null) {
-                detectAndCropFace(original)
+                val res = detectAndCropFace(original)
+                if (res.first !== original && !original.isRecycled) {
+                    original.recycle()
+                }
+                res
             } else {
                 Pair(createSyntheticFaceBitmap("Sin Rostro"), false)
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Error al extraer imagen desde Uri: ${e.message}")
+            if (original != null && !original.isRecycled) {
+                original.recycle()
+            }
             Pair(createSyntheticFaceBitmap("Sin Rostro"), false)
         }
     }
 
     private fun extractKeyframeFromVideo(uri: Uri): Pair<Bitmap, Boolean> {
         val retriever = MediaMetadataRetriever()
+        var frame: Bitmap? = null
         return try {
             retriever.setDataSource(context, uri)
-            var frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            if (frame == null) {
-                frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            }
-            if (frame == null) {
-                frame = retriever.frameAtTime
-            }
+            frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.frameAtTime
             if (frame != null) {
-                detectAndCropFace(frame)
+                val res = detectAndCropFace(frame)
+                if (res.first !== frame && !frame.isRecycled) {
+                    frame.recycle()
+                }
+                res
             } else {
                 Pair(createSyntheticFaceBitmap("Sin Rostro Video"), false)
             }
         } catch (e: Throwable) {
             Log.e(TAG, "Error al extraer fotograma del video: ${e.message}")
+            if (frame != null && !frame.isRecycled) {
+                frame.recycle()
+            }
             Pair(createSyntheticFaceBitmap("Sin Rostro Video"), false)
         } finally {
             try { retriever.release() } catch (_: Throwable) {}
@@ -400,17 +395,31 @@ class MediaRouter(private val context: Context) {
     }
 
     private fun detectAndCropFace(source: Bitmap): Pair<Bitmap, Boolean> {
+        if (source.isRecycled || source.width <= 0 || source.height <= 0) {
+            return Pair(createSyntheticFaceBitmap("Sin Rostro"), false)
+        }
+        var normalizedSource: Bitmap? = null
+        var croppedTemp: Bitmap? = null
         return try {
             val maxDim = maxOf(source.width, source.height)
-            val normalizedSource = if (maxDim > 800) {
+            val target = if (maxDim > 800) {
                 val scale = 800f / maxDim
-                Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true)
+                val scaled = Bitmap.createScaledBitmap(
+                    source,
+                    maxOf(1, (source.width * scale).toInt()),
+                    maxOf(1, (source.height * scale).toInt()),
+                    true
+                )
+                normalizedSource = scaled
+                scaled
             } else {
                 source
             }
 
-            val inputImage = InputImage.fromBitmap(normalizedSource, 0)
-            val faces = Tasks.await(blazeFaceDetector.process(inputImage))
+            val inputImage = InputImage.fromBitmap(target, 0)
+            val faces = synchronized(TfliteExecutionLock.faceLock) {
+                Tasks.await(blazeFaceDetector.process(inputImage))
+            }
 
             if (faces.isNotEmpty()) {
                 val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() } ?: faces[0]
@@ -418,34 +427,57 @@ class MediaRouter(private val context: Context) {
 
                 val marginX = (box.width() * 0.15f).toInt()
                 val marginY = (box.height() * 0.15f).toInt()
-                val left = (box.left - marginX).coerceIn(0, normalizedSource.width - 1)
-                val top = (box.top - marginY).coerceIn(0, normalizedSource.height - 1)
-                val right = (box.right + marginX).coerceIn(left + 1, normalizedSource.width)
-                val bottom = (box.bottom + marginY).coerceIn(top + 1, normalizedSource.height)
+                val left = (box.left - marginX).coerceIn(0, target.width - 1)
+                val top = (box.top - marginY).coerceIn(0, target.height - 1)
+                val right = (box.right + marginX).coerceIn(left + 1, target.width)
+                val bottom = (box.bottom + marginY).coerceIn(top + 1, target.height)
                 val cropW = right - left
                 val cropH = bottom - top
 
                 if (cropW > 24 && cropH > 24) {
-                    val cropped = Bitmap.createBitmap(normalizedSource, left, top, cropW, cropH)
+                    val cropped = Bitmap.createBitmap(target, left, top, cropW, cropH)
+                    croppedTemp = cropped
+                    val result = if (cropW == 224 && cropH == 224) {
+                        croppedTemp = null
+                        cropped
+                    } else {
+                        Bitmap.createScaledBitmap(cropped, 224, 224, true)
+                    }
                     Log.d(TAG, "BlazeFace: Rostro detectado [x=$left, y=$top, dim=${cropW}x${cropH}]. Margen pericial 15% aplicado.")
-                    return Pair(Bitmap.createScaledBitmap(cropped, 224, 224, true), true)
+                    return Pair(result, true)
                 }
             }
 
             Log.i(TAG, "BlazeFace: No se detectó rostro humano en la imagen. Protocolo de descarte automático activo.")
-            val minDim = minOf(normalizedSource.width, normalizedSource.height)
-            val cropX = (normalizedSource.width - minDim) / 2
-            val cropY = (normalizedSource.height - minDim) / 2
-            val centerCropped = Bitmap.createBitmap(normalizedSource, cropX, cropY, minDim, minDim)
-            Pair(Bitmap.createScaledBitmap(centerCropped, 224, 224, true), false)
+            Pair(createCenterSquareThumbnail(target), false)
         } catch (e: Throwable) {
             Log.w(TAG, "Detección facial BlazeFace con fallback: ${e.message}")
-            val minDim = minOf(source.width, source.height)
-            val cropX = (source.width - minDim) / 2
-            val cropY = (source.height - minDim) / 2
-            val centerCropped = Bitmap.createBitmap(source, cropX, cropY, minDim, minDim)
-            Pair(Bitmap.createScaledBitmap(centerCropped, 224, 224, true), false)
+            Pair(createCenterSquareThumbnail(source), false)
+        } finally {
+            val ct = croppedTemp
+            if (ct != null && ct !== source && ct !== normalizedSource && !ct.isRecycled) {
+                ct.recycle()
+            }
+            val ns = normalizedSource
+            if (ns != null && ns !== source && !ns.isRecycled) {
+                ns.recycle()
+            }
         }
+    }
+
+    private fun createCenterSquareThumbnail(source: Bitmap): Bitmap {
+        val minDim = maxOf(1, minOf(source.width, source.height))
+        val cropX = ((source.width - minDim) / 2).coerceIn(0, maxOf(0, source.width - 1))
+        val cropY = ((source.height - minDim) / 2).coerceIn(0, maxOf(0, source.height - 1))
+        val centerCropped = Bitmap.createBitmap(source, cropX, cropY, minDim, minDim)
+        if (minDim == 224) {
+            return centerCropped
+        }
+        val scaled = Bitmap.createScaledBitmap(centerCropped, 224, 224, true)
+        if (scaled !== centerCropped && !centerCropped.isRecycled) {
+            centerCropped.recycle()
+        }
+        return scaled
     }
 
     private fun generateSpectrogramFromAudioTrack(uri: Uri): Bitmap {
@@ -457,44 +489,6 @@ class MediaRouter(private val context: Context) {
             Log.e(TAG, "Fallo procesando audio de video: ${e.message}")
             createSyntheticSpectrogramBitmap()
         }
-    }
-
-    private fun createSpectrogramFromInputStream(stream: java.io.InputStream): Bitmap {
-        val buffer = ByteArray(32768)
-        val bytesRead = stream.read(buffer)
-        if (bytesRead <= 0) return createSyntheticSpectrogramBitmap()
-
-        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint()
-
-        canvas.drawColor(Color.rgb(15, 23, 42))
-
-        val step = 4
-        val numCols = 224 / step
-        val numRows = 224 / step
-        val chunk = maxOf(1, bytesRead / numCols)
-
-        for (col in 0 until numCols) {
-            val byteIndex = (col * chunk).coerceIn(0, bytesRead - 1)
-            val baseVal = (buffer[byteIndex].toInt() and 0xFF)
-
-            for (row in 0 until numRows) {
-                val freqFactor = 1.0 - (row.toDouble() / numRows)
-                val variation = Math.sin((col * 0.2) + (row * 0.15) + (baseVal * 0.05))
-                val intensity = ((baseVal * freqFactor * 0.8 + (variation + 1.0) * 40.0)).toInt().coerceIn(0, 255)
-
-                val r = (intensity * 1.1).toInt().coerceIn(0, 255)
-                val g = (intensity * 0.7).toInt().coerceIn(0, 255)
-                val b = (255 - intensity * 0.6).toInt().coerceIn(0, 255)
-
-                paint.color = Color.rgb(r, g, b)
-                val x = (col * step).toFloat()
-                val y = (row * step).toFloat()
-                canvas.drawRect(x, y, x + step, y + step, paint)
-            }
-        }
-        return bitmap
     }
 
     private fun createSyntheticSpectrogramBitmap(): Bitmap {

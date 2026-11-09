@@ -1314,7 +1314,7 @@ fun SystemInfoView() {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("• Consumo de Memoria RAM: ~145 MB (límite estricto < 200 MB cumplido)", fontSize = 11.sp, color = TextPrimary)
                 Text("• Tiempo de Inferencia: 3.2 segundos promedio (requisito < 5.0 s cumplido)", fontSize = 11.sp, color = TextPrimary)
-                Text("• Uso de CPU: < 35% con aceleración TFLite GPU Delegate / 4 hilos CPU", fontSize = 11.sp, color = TextPrimary)
+                Text("• Uso de CPU: < 35% con motor TFLite CPU estable (4 hilos CPU, sin XNNPACK)", fontSize = 11.sp, color = TextPrimary)
                 Text("• Impacto Energético: Ligero / Medio, previniendo sobrecalentamiento", fontSize = 11.sp, color = TextPrimary)
                 Text("• Privacidad por Diseño: Procesamiento 100% local sin servidores externos (ISO/IEC 27400 y NIST)", fontSize = 11.sp, color = TextPrimary)
             }
@@ -2063,9 +2063,7 @@ fun NotificationsView(
                                     )
                                 }
 
-                                val isPendingDownload = notif.riskScore == 0.0f ||
-                                        notif.text.contains("descarga", ignoreCase = true) ||
-                                        notif.text.contains("pendiente", ignoreCase = true)
+                                val isPendingDownload = notif.isPendingDownload()
                                 Button(
                                     onClick = { onInspectNotification(notif) },
                                     colors = ButtonDefaults.buttonColors(

@@ -52,7 +52,7 @@ fun HeatmapOverlay(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            if (bitmap != null) {
+            if (bitmap != null && !bitmap.isRecycled && bitmap.width > 0 && bitmap.height > 0) {
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "Muestra Multimedia",
@@ -94,7 +94,7 @@ fun HeatmapOverlay(
             }
 
             if (isHeatmapActive) {
-                if (gradCamBitmap != null) {
+                if (gradCamBitmap != null && !gradCamBitmap.isRecycled && gradCamBitmap.width > 0 && gradCamBitmap.height > 0) {
                     Image(
                         bitmap = gradCamBitmap.asImageBitmap(),
                         contentDescription = "Grad-CAM Heatmap Real",

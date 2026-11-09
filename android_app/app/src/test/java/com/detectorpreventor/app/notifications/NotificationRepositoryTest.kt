@@ -365,4 +365,86 @@ class NotificationRepositoryTest {
         assertEquals(RiskLevel.BAJO, restored.fusionResult?.riskLevel)
         assertTrue(restored.fusionResult?.wasFaceDiscarded == true)
     }
+
+    @Test
+    fun testHasNotificationAndEdgePendingLogic() {
+        val fusionDiscard = FusionResult(
+            globalRiskPercentage = 0.0f,
+            audioFraudProb = 0.0f,
+            visionFraudProb = 0.0f,
+            riskLevel = RiskLevel.BAJO,
+            weightAudio = 0.0f,
+            weightVision = 1.0f,
+            diagnosticSummary = "Descarte facial",
+            wasFaceDiscarded = true
+        )
+        val discardedWithPendingKeyword = InterceptedNotification(
+            id = "discard-pending-text",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Amigo",
+            text = "Descarga de imagen de paisaje (sin personas)",
+            timestamp = System.currentTimeMillis(),
+            mediaType = MediaType.IMAGE_ONLY,
+            riskScore = 0.0f,
+            isThreat = false,
+            fusionResult = fusionDiscard
+        )
+        NotificationRepository.addNotification(discardedWithPendingKeyword)
+        assertTrue(NotificationRepository.hasNotification("discard-pending-text"))
+        assertFalse(discardedWithPendingKeyword.isPendingDownload())
+
+        assertTrue(NotificationRepository.removeNotification("discard-pending-text"))
+        assertFalse(NotificationRepository.hasNotification("discard-pending-text"))
+    }
+
+    @Test
+    fun testConcurrentRepositoryOperationsAreThreadSafe() {
+        val threads = 8
+        val opsPerThread = 25
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+        val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+        val latch = java.util.concurrent.CountDownLatch(threads)
+
+        for (t in 0 until threads) {
+            pool.submit {
+                try {
+                    for (i in 0 until opsPerThread) {
+                        val id = "thread-$t-$i"
+                        val notif = InterceptedNotification(
+                            id = id,
+                            appName = "WhatsApp",
+                            packageName = "com.whatsapp",
+                            sender = "Sender-$t",
+                            text = "Msg $i (descargando...)",
+                            timestamp = System.currentTimeMillis() + i,
+                            mediaType = MediaType.IMAGE_ONLY,
+                            riskScore = 0.0f,
+                            isThreat = false
+                        )
+                        NotificationRepository.addNotification(notif)
+                        NotificationRepository.updateNotification(
+                            notif.copy(text = "Analizado $i", riskScore = 25.0f)
+                        )
+                        if (i % 3 == 0) {
+                            NotificationRepository.blockSender("Blocked-$t-$i")
+                        }
+                        NotificationRepository.hasNotification(id)
+                        if (i % 2 == 0) {
+                            NotificationRepository.removeNotification(id)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    errors.add(e)
+                } finally {
+                    latch.countDown()
+                }
+            }
+        }
+
+        latch.await()
+        pool.shutdownNow()
+        assertTrue(errors.isEmpty(), "Operaciones concurrentes lanzaron excepcion: ${errors.firstOrNull()?.message}")
+        assertTrue(NotificationRepository.notifications.value.size <= 50)
+    }
 }

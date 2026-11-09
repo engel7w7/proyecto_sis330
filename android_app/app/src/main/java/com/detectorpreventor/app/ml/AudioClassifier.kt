@@ -113,15 +113,15 @@ class AudioClassifier(private val context: Context) {
                     val outputBuffer = Array(1) { FloatArray(1) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val logit = outputBuffer[0][0]
-                    (1.0 / (1.0 + Math.exp(-((logit - 0.180) * 10.0)))).toFloat()
+                    (1.0 / (1.0 + Math.exp(-((logit - 0.350) * 8.0)))).toFloat()
                 } else {
                     val outputBuffer = Array(1) { FloatArray(numClasses) }
                     currentInterpreter.run(inputBuffer, outputBuffer)
                     val score0 = outputBuffer[0][0]
-                    (1.0 / (1.0 + Math.exp(-((score0 - 0.180) * 10.0)))).toFloat()
+                    (1.0 / (1.0 + Math.exp(-((score0 - 0.350) * 8.0)))).toFloat()
                 }
 
-                val finalProb = (rawProb * 0.50f + spectralProb * 0.50f).coerceIn(0.01f, 0.99f)
+                val finalProb = (rawProb * 0.45f + spectralProb * 0.55f).coerceIn(0.01f, 0.99f)
                 lastGradCamBitmap = generateSpectrogramGradCam(spectrogramBitmap, finalProb)
                 return finalProb
             } catch (e: Exception) {
@@ -218,33 +218,41 @@ class AudioClassifier(private val context: Context) {
     private fun generateSpectrogramGradCam(spectrogram: Bitmap, riskProbability: Float): Bitmap {
         val outBitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
         val pixels = IntArray(224 * 224)
+        val srcPixels = IntArray(224 * 224)
+        val scaled = if (spectrogram.width == 224 && spectrogram.height == 224) spectrogram else Bitmap.createScaledBitmap(spectrogram, 224, 224, true)
+        scaled.getPixels(srcPixels, 0, 224, 0, 0, 224, 224)
+
         val isHighRisk = riskProbability >= 0.5f
-        val baseAlpha = if (isHighRisk) (riskProbability * 0.80f).coerceIn(0.40f, 0.85f) else 0.25f
+        val baseAlpha = if (isHighRisk) 0.45f else 0.30f
 
         for (py in 0 until 224) {
             val normY = py.toFloat() / 223f
             for (px in 0 until 224) {
-                val normX = px.toFloat() / 223f
+                val p = srcPixels[py * 224 + px]
+                val lum = (((p shr 16) and 0xFF) * 0.30f + ((p shr 8) and 0xFF) * 0.59f + (p and 0xFF) * 0.11f) / 255.0f
 
                 val activation = if (isHighRisk) {
-                    val vocoderBand = Math.exp(-((normY - 0.25) * (normY - 0.25)) / 0.03).toFloat()
-                    val phaseGlitch = Math.exp(-((normX - 0.60) * (normX - 0.60) + (normY - 0.35) * (normY - 0.35)) / 0.04).toFloat()
-                    (vocoderBand * 0.75f + phaseGlitch * 0.65f).coerceIn(0f, 1f)
+                    val hfWeight = if (normY < 0.45f) 1.5f else 0.4f
+                    val temporalDiff = if (px > 0) {
+                        val pPrev = srcPixels[py * 224 + (px - 1)]
+                        val lumPrev = (((pPrev shr 16) and 0xFF) * 0.30f + ((pPrev shr 8) and 0xFF) * 0.59f + (pPrev and 0xFF) * 0.11f) / 255.0f
+                        Math.abs(lum - lumPrev) * 2.0f
+                    } else 0f
+                    ((lum * hfWeight) + temporalDiff).coerceIn(0f, 1f)
                 } else {
-                    val naturalFormant1 = Math.exp(-((normY - 0.75) * (normY - 0.75)) / 0.02).toFloat()
-                    val naturalFormant2 = Math.exp(-((normY - 0.60) * (normY - 0.60)) / 0.03).toFloat()
-                    ((naturalFormant1 * 0.5f + naturalFormant2 * 0.3f) * 0.4f).coerceIn(0f, 1f)
+                    val formantWeight = if (normY in 0.50f..0.90f) 1.4f else 0.3f
+                    (lum * formantWeight).coerceIn(0f, 1f)
                 }
 
                 if (isHighRisk) {
                     val (r, g, b) = jetColorMap(activation)
-                    val alpha = ((activation * baseAlpha).coerceIn(0.04f, 0.85f) * 255).toInt()
+                    val alpha = ((activation * baseAlpha).coerceIn(0.02f, 0.65f) * 255).toInt()
                     pixels[py * 224 + px] = (alpha shl 24) or (r shl 16) or (g shl 8) or b
                 } else {
                     val r = (16 * (1f - activation) + 50 * activation).toInt().coerceIn(0, 255)
                     val g = (185 * (1f - activation) + 210 * activation).toInt().coerceIn(0, 255)
                     val b = (129 * (1f - activation) + 160 * activation).toInt().coerceIn(0, 255)
-                    val alpha = ((activation * baseAlpha).coerceIn(0.02f, 0.35f) * 255).toInt()
+                    val alpha = ((activation * baseAlpha).coerceIn(0.02f, 0.45f) * 255).toInt()
                     pixels[py * 224 + px] = (alpha shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }

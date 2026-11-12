@@ -82,30 +82,38 @@ fun RiskIndicatorCard(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .background(PrimaryIndigo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = String.format("Audio (STFT): %.0f%%", fusionResult.audioFraudProb * 100),
-                        color = TextPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                if (fusionResult.weightAudio > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .background(PrimaryIndigo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = String.format("Audio (PCM): %.0f%%", fusionResult.audioFraudProb * 100),
+                            color = TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .background(PrimaryIndigo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = String.format("Visión (Face): %.0f%%", fusionResult.visionFraudProb * 100),
-                        color = TextPrimary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                if (fusionResult.weightVision > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .background(PrimaryIndigo.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (fusionResult.wasFaceDiscarded) {
+                                "Visión: Sin Rostro"
+                            } else {
+                                String.format("Visión (Face): %.0f%%", fusionResult.visionFraudProb * 100)
+                            },
+                            color = TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }

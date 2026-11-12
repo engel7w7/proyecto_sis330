@@ -52,3 +52,10 @@ desktop.ini
 *.log
 *.html
 *.bak
+
+.eval_cache/
+.eval_cache/**
+.train_cache/
+.train_cache/**
+detector_multimodal_edge/guardado/
+detector_multimodal_edge/guardado/**

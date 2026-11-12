@@ -8,12 +8,13 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Log
+import com.detectorpreventor.app.ml.AudioSpectrogramGenerator
 import com.detectorpreventor.app.ml.TfliteExecutionLock
+import com.detectorpreventor.app.ml.VisionClassifier
 import com.detectorpreventor.app.notifications.NotificationMediaCache
 import com.detectorpreventor.app.notifications.NotificationRepository
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -35,7 +36,11 @@ data class ProcessedMediaPayload(
     val audioGradCamBitmap: Bitmap? = null,
     val filename: String = "",
     val faceDetected: Boolean = true,
-    val discardReason: String? = null
+    val discardReason: String? = null,
+    val faceKeyframes: List<Bitmap> = emptyList(),
+    val audioPcm: FloatArray? = null,
+    val faceKeyframesQualities: List<Float> = emptyList(),
+    val audioConfidence: Float = 1.0f
 )
 
 class MediaRouter(private val context: Context) {
@@ -49,7 +54,7 @@ class MediaRouter(private val context: Context) {
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
             .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .setMinFaceSize(0.12f)
+            .setMinFaceSize(0.05f)
             .build()
         FaceDetection.getClient(options)
     }
@@ -70,23 +75,28 @@ class MediaRouter(private val context: Context) {
                         4 -> "samples/08_clonacion_ia_spoof_tts_3_spec.png"
                         else -> "samples/02_voz_humana_real_bonafide_2_spec.png"
                     }
+                    val wavAsset = wavAssetFromSampleSpec(asset)
+                    val audioPcm = loadWavPcm48kFromAsset(wavAsset)
+                        ?: AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, uri)?.pcm48k
                     val bitmap = loadBitmapFromAsset(asset)
                         ?: loadBitmapFromAsset(if (index % 2 != 0) "samples/audio_real_spec.png" else "samples/audio_fake_spec.png")
+                        ?: audioPcm?.let { AudioSpectrogramGenerator.analyzePcm(it).spectrogramBitmap }
                         ?: generateSpectrogramFromAudio(uri)
                     ProcessedMediaPayload(
                         mediaType = MediaType.AUDIO_ONLY,
                         audioSpectrogram = bitmap,
                         faceKeyframe = null,
                         filename = getFileNameFromUri(uri),
-                        faceDetected = true
+                        faceDetected = true,
+                        audioPcm = audioPcm
                     )
                 }
                 "image" -> {
                     val asset = when (index) {
                         1 -> "samples/01_retrato_humano_real_1.jpg"
-                        2 -> "samples/06_deepfake_rostro_ia_1.jpg"
-                        3 -> "samples/07_deepfake_rostro_ia_2.jpg"
-                        4 -> "samples/08_deepfake_rostro_ia_3.jpg"
+                        2 -> "samples/10_deepfake_rostro_ia_5.jpg"
+                        3 -> "samples/06_deepfake_rostro_ia_1.jpg"
+                        4 -> "samples/07_deepfake_rostro_ia_2.jpg"
                         else -> "samples/02_retrato_humano_real_2.jpg"
                     }
                     val bitmap = loadBitmapFromAsset(asset)
@@ -95,16 +105,17 @@ class MediaRouter(private val context: Context) {
                         mediaType = MediaType.IMAGE_ONLY,
                         audioSpectrogram = null,
                         faceKeyframe = bitmap,
+                        faceKeyframes = if (bitmap != null) listOf(bitmap) else emptyList(),
                         filename = getFileNameFromUri(uri),
-                        faceDetected = true
+                        faceDetected = bitmap != null
                     )
                 }
                 else -> {
                     val faceAsset = when (index) {
                         1 -> "samples/01_retrato_humano_real_1.jpg"
-                        2 -> "samples/06_deepfake_rostro_ia_1.jpg"
-                        3 -> "samples/08_deepfake_rostro_ia_3.jpg"
-                        4 -> "samples/09_deepfake_rostro_ia_4.jpg"
+                        2 -> "samples/10_deepfake_rostro_ia_5.jpg"
+                        3 -> "samples/06_deepfake_rostro_ia_1.jpg"
+                        4 -> "samples/07_deepfake_rostro_ia_2.jpg"
                         else -> "samples/03_retrato_humano_real_3.jpg"
                     }
                     val audioAsset = when (index) {
@@ -114,12 +125,20 @@ class MediaRouter(private val context: Context) {
                         4 -> "samples/08_clonacion_ia_spoof_tts_3_spec.png"
                         else -> "samples/04_voz_humana_real_bonafide_4_spec.png"
                     }
+                    val audioWavAsset = wavAssetFromSampleSpec(audioAsset)
+                    val audioPcm = loadWavPcm48kFromAsset(audioWavAsset)
+                    val audioSpec = loadBitmapFromAsset(audioAsset)
+                        ?: audioPcm?.let { AudioSpectrogramGenerator.analyzePcm(it).spectrogramBitmap }
+                        ?: generateSpectrogramFromAudio(uri)
+                    val faceBmp = loadBitmapFromAsset(faceAsset) ?: loadBitmapFromAsset("samples/image_real_face.jpg")
                     ProcessedMediaPayload(
                         mediaType = MediaType.VIDEO_MULTIMODAL,
-                        audioSpectrogram = loadBitmapFromAsset(audioAsset) ?: generateSpectrogramFromAudio(uri),
-                        faceKeyframe = loadBitmapFromAsset(faceAsset) ?: loadBitmapFromAsset("samples/image_real_face.jpg"),
+                        audioSpectrogram = audioSpec,
+                        faceKeyframe = faceBmp,
+                        faceKeyframes = if (faceBmp != null) listOf(faceBmp) else emptyList(),
                         filename = getFileNameFromUri(uri),
-                        faceDetected = true
+                        faceDetected = faceBmp != null,
+                        audioPcm = audioPcm
                     )
                 }
             }
@@ -130,123 +149,137 @@ class MediaRouter(private val context: Context) {
             val notif = NotificationRepository.notifications.value.find { it.id == notifId }
             val mType = notif?.mediaType ?: resolveMediaType(uri, mimeType)
 
-            val senderLower = notif?.sender?.lowercase() ?: ""
-            val textLower = notif?.text?.lowercase() ?: ""
-            val isThreatContext = (notif?.isThreat == true) ||
-                    (notif?.riskScore != null && notif.riskScore >= 70f) ||
-                    senderLower.contains("urgente") ||
-                    senderLower.contains("mamá") ||
-                    senderLower.contains("mama") ||
-                    senderLower.contains("desconocido") ||
-                    senderLower.contains("+") ||
-                    senderLower.contains("banco") ||
-                    textLower.contains("urgente") ||
-                    textLower.contains("depósito") ||
-                    textLower.contains("deposito") ||
-                    textLower.contains("tarjeta") ||
-                    textLower.contains("dinero") ||
-                    textLower.contains("comprometedor") ||
-                    textLower.contains("alerta") ||
-                    textLower.contains("sospechoso") ||
-                    textLower.contains("clonaci") ||
-                    textLower.contains("deepfake") ||
-                    textLower.contains("faceswap")
-
             val storedUriStr = notif?.mediaUriString ?: NotificationMediaCache.getMediaUriString(notifId)
+            val isAssetSimulation = storedUriStr?.startsWith("asset://") == true ||
+                storedUriStr?.startsWith("synthetic://") == true
             val cachedFace = NotificationMediaCache.getFaceBitmap(context, notifId) ?: NotificationMediaCache.getFaceBitmap(notifId)
             val cachedAudio = NotificationMediaCache.getAudioBitmap(context, notifId) ?: NotificationMediaCache.getAudioBitmap(notifId)
-
-            val defaultRealFace = "samples/01_retrato_humano_real_1.jpg"
-            val defaultFakeFace = "samples/06_deepfake_rostro_ia_1.jpg"
-            val defaultRealAudio = "samples/01_voz_humana_real_bonafide_1_spec.png"
-            val defaultFakeAudio = "samples/06_clonacion_ia_spoof_tts_1_spec.png"
+            val cachedAudioPcm = NotificationMediaCache.getAudioPcm(notifId)
 
             return@withContext when (mType) {
                 MediaType.AUDIO_ONLY -> {
-                    val asset = if (isThreatContext) defaultFakeAudio else defaultRealAudio
-                    val bitmap = cachedAudio
-                        ?: storedUriStr?.let { s ->
-                            when {
-                                s.startsWith("asset://") -> loadBitmapFromAsset(s.removePrefix("asset://"))
-                                s.startsWith("file://") || s.startsWith("content://") -> {
-                                    val parsed = Uri.parse(s)
-                                    if (s.endsWith(".png", true) || s.endsWith(".jpg", true)) loadBitmapFromUri(parsed)
-                                    else generateSpectrogramFromAudio(parsed)
+                    var bitmap: Bitmap? = cachedAudio
+                    var audioPcm: FloatArray? = cachedAudioPcm
+                    if (storedUriStr != null && (bitmap == null || audioPcm == null)) {
+                        when {
+                            storedUriStr.startsWith("asset://") -> {
+                                val assetRef = storedUriStr.removePrefix("asset://")
+                                val wavAsset = wavAssetFromSampleSpec(assetRef)
+                                val specAsset = specAssetFromAudioAsset(assetRef)
+                                if (audioPcm == null) {
+                                    audioPcm = loadWavPcm48kFromAsset(wavAsset)
                                 }
-                                else -> null
+                                if (bitmap == null) {
+                                    bitmap = loadBitmapFromAsset(specAsset)
+                                        ?: audioPcm?.let { AudioSpectrogramGenerator.analyzePcm(it).spectrogramBitmap }
+                                }
+                            }
+                            storedUriStr.startsWith("file://") || storedUriStr.startsWith("content://") -> {
+                                val parsed = Uri.parse(storedUriStr)
+                                if (storedUriStr.endsWith(".png", true) || storedUriStr.endsWith(".jpg", true)) {
+                                    if (bitmap == null) bitmap = loadBitmapFromUri(parsed)
+                                } else {
+                                    val audioRes = AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, parsed)
+                                    if (bitmap == null) bitmap = audioRes?.spectrogramBitmap
+                                    if (audioPcm == null) audioPcm = audioRes?.pcm48k
+                                }
                             }
                         }
-                        ?: loadBitmapFromAsset(asset)
-                        ?: loadBitmapFromAsset(if (isThreatContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
-                        ?: generateSpectrogramFromAudio(uri)
+                    }
 
                     ProcessedMediaPayload(
                         mediaType = MediaType.AUDIO_ONLY,
                         audioSpectrogram = bitmap,
                         faceKeyframe = null,
                         filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "audio_notificacion.opus",
-                        faceDetected = true
+                        faceDetected = true,
+                        audioPcm = audioPcm
                     )
                 }
                 MediaType.IMAGE_ONLY -> {
-                    val asset = if (isThreatContext) defaultFakeFace else defaultRealFace
                     val rawBitmap = cachedFace
                         ?: storedUriStr?.let { s ->
                             when {
                                 s.startsWith("asset://") -> loadBitmapFromAsset(s.removePrefix("asset://"))
+                                s.startsWith("synthetic://") -> createSyntheticLandscapeBitmap()
                                 s.startsWith("file://") || s.startsWith("content://") -> loadBitmapFromUri(Uri.parse(s))
                                 else -> null
                             }
                         }
-                        ?: loadBitmapFromAsset(asset)
-                        ?: loadBitmapFromAsset(if (isThreatContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
-                        ?: createSyntheticFaceBitmap("Imagen")
 
-                    val (croppedFace, faceOk) = detectAndCropFace(rawBitmap)
+                    val (croppedFace, faceOk) = when {
+                        notif?.isFaceDiscarded() == true && cachedFace != null -> Pair(cachedFace, false)
+                        cachedFace != null && notif?.fusionResult != null && !notif.isFaceDiscarded() -> Pair(cachedFace, true)
+                        rawBitmap != null -> detectAndCropFace(rawBitmap)
+                        else -> Pair(null, false)
+                    }
 
                     ProcessedMediaPayload(
                         mediaType = MediaType.IMAGE_ONLY,
                         audioSpectrogram = null,
                         faceKeyframe = croppedFace,
+                        faceKeyframes = if (faceOk && croppedFace != null) listOf(croppedFace) else emptyList(),
                         filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "imagen_notificacion.jpg",
                         faceDetected = faceOk,
-                        discardReason = if (!faceOk) "Descarte automático: No se detectó rostro humano" else null
+                        discardReason = if (!faceOk) "Descarte automatico: No se detecto rostro humano" else null
                     )
                 }
                 MediaType.VIDEO_MULTIMODAL -> {
-                    val faceAsset = if (isThreatContext) defaultFakeFace else defaultRealFace
-                    val audioAsset = if (isThreatContext) defaultFakeAudio else defaultRealAudio
-                    val rawFace = cachedFace
-                        ?: loadBitmapFromAsset(faceAsset)
-                        ?: loadBitmapFromAsset(if (isThreatContext) "samples/image_fake_face.jpg" else "samples/image_real_face.jpg")
-                        ?: createSyntheticFaceBitmap("Video")
+                    val parsedStoredUri = storedUriStr?.takeIf { it.startsWith("file://") || it.startsWith("content://") }?.let { Uri.parse(it) }
+                    val extractedFrames = if (cachedFace == null && parsedStoredUri != null && !storedUriStr.endsWith(".jpg", true) && !storedUriStr.endsWith(".png", true)) {
+                        extractKeyframesFromVideo(parsedStoredUri, maxFrames = 5)
+                    } else null
 
-                    val (croppedFace, faceOk) = detectAndCropFace(rawFace)
+                    val rawFace = cachedFace
+                        ?: extractedFrames?.first?.firstOrNull()
+                        ?: storedUriStr?.takeIf { it.startsWith("asset://") }?.let { loadBitmapFromAsset(it.removePrefix("asset://")) }
+
+                    val (croppedFace, faceOk, keyframesList) = when {
+                        extractedFrames != null -> Triple(extractedFrames.first.firstOrNull(), extractedFrames.second, extractedFrames.first)
+                        notif?.isFaceDiscarded() == true && cachedFace != null -> Triple(cachedFace, false, emptyList())
+                        cachedFace != null && notif?.fusionResult != null && !notif.isFaceDiscarded() -> Triple(cachedFace, true, listOf(cachedFace))
+                        rawFace != null -> {
+                            val (c, ok) = detectAndCropFace(rawFace, forceTightCrop = false)
+                            Triple(c, ok, if (ok) listOf(c) else emptyList())
+                        }
+                        else -> Triple(null, false, emptyList())
+                    }
+
+                    val audioRes = if ((cachedAudio == null || cachedAudioPcm == null) && parsedStoredUri != null) {
+                        AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, parsedStoredUri)
+                    } else null
+
+                    val pairedAudio = if (isAssetSimulation && cachedAudio == null) {
+                        pairedAudioAssetFromVideoAsset(storedUriStr)?.let { loadBitmapFromAsset(it) }
+                    } else null
+
+                    val pairedAudioPcm = if (isAssetSimulation && cachedAudioPcm == null) {
+                        pairedAudioWavFromVideoAsset(storedUriStr)?.let { loadWavPcm48kFromAsset(it) }
+                    } else null
+
+                    val audioSpec = cachedAudio ?: audioRes?.spectrogramBitmap ?: pairedAudio
+                    val audioPcm = cachedAudioPcm ?: audioRes?.pcm48k ?: pairedAudioPcm
 
                     ProcessedMediaPayload(
                         mediaType = MediaType.VIDEO_MULTIMODAL,
-                        audioSpectrogram = cachedAudio
-                            ?: loadBitmapFromAsset(audioAsset)
-                            ?: loadBitmapFromAsset(if (isThreatContext) "samples/audio_fake_spec.png" else "samples/audio_real_spec.png")
-                            ?: createSyntheticSpectrogramBitmap(),
+                        audioSpectrogram = audioSpec,
                         faceKeyframe = croppedFace,
+                        faceKeyframes = keyframesList,
                         filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "video_notificacion.mp4",
                         faceDetected = faceOk,
-                        discardReason = if (!faceOk) "Advertencia: Sin detección facial en fotogramas de video" else null
+                        discardReason = if (!faceOk) "Advertencia: Sin deteccion facial en fotogramas de video" else null,
+                        audioPcm = audioPcm
                     )
                 }
                 else -> {
-                    val faceAsset = if (isThreatContext) defaultFakeFace else defaultRealFace
-                    val audioAsset = if (isThreatContext) defaultFakeAudio else defaultRealAudio
-                    val rawFace = cachedFace ?: loadBitmapFromAsset(faceAsset)
-                    val (croppedFace, faceOk) = if (rawFace != null) detectAndCropFace(rawFace) else Pair(null, false)
                     ProcessedMediaPayload(
                         mediaType = MediaType.UNKNOWN,
-                        audioSpectrogram = cachedAudio ?: loadBitmapFromAsset(audioAsset) ?: createSyntheticSpectrogramBitmap(),
-                        faceKeyframe = croppedFace,
+                        audioSpectrogram = cachedAudio,
+                        faceKeyframe = cachedFace,
                         filename = notif?.let { "${it.appName}: ${it.sender}" } ?: "mensaje_notificacion",
-                        faceDetected = faceOk,
-                        discardReason = if (!faceOk) "Descarte automático: No se detectó rostro humano" else null
+                        faceDetected = cachedFace != null,
+                        discardReason = if (cachedFace == null) "Sin contenido multimedia adjunto" else null,
+                        audioPcm = cachedAudioPcm
                     )
                 }
             }
@@ -257,47 +290,65 @@ class MediaRouter(private val context: Context) {
 
         return@withContext when (detectedType) {
             MediaType.AUDIO_ONLY -> {
-                val spectrogram = generateSpectrogramFromAudio(uri)
+                val audioRes = AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, uri)
                 ProcessedMediaPayload(
                     mediaType = MediaType.AUDIO_ONLY,
-                    audioSpectrogram = spectrogram,
+                    audioSpectrogram = audioRes?.spectrogramBitmap,
                     faceKeyframe = null,
                     filename = getFileNameFromUri(uri),
-                    faceDetected = true
+                    faceDetected = true,
+                    audioPcm = audioRes?.pcmFull16k ?: audioRes?.pcm48k,
+                    audioConfidence = audioRes?.audioConfidence ?: 1.0f
                 )
             }
             MediaType.IMAGE_ONLY -> {
                 val (faceBitmap, hasFace) = extractFaceFromImageUri(uri)
+                val qList = if (hasFace) listOf(VisionClassifier.computeLaplacianSharpness(faceBitmap)) else emptyList()
                 ProcessedMediaPayload(
                     mediaType = MediaType.IMAGE_ONLY,
                     audioSpectrogram = null,
                     faceKeyframe = faceBitmap,
+                    faceKeyframes = if (hasFace) listOf(faceBitmap) else emptyList(),
                     filename = getFileNameFromUri(uri),
                     faceDetected = hasFace,
-                    discardReason = if (!hasFace) "Descarte automático: No se detectó rostro humano" else null
+                    discardReason = if (!hasFace) "Descarte automatico: No se detecto rostro humano" else null,
+                    faceKeyframesQualities = qList
                 )
             }
             MediaType.VIDEO_MULTIMODAL -> {
-                val (faceKeyframe, hasFace) = extractKeyframeFromVideo(uri)
-                val audioSpectrogram = generateSpectrogramFromAudioTrack(uri)
+                val extRes = VisionClassifier.extractBestFiveVideoKeyframes(
+                    context = context,
+                    uri = uri,
+                    detector = blazeFaceDetector,
+                    forceTightCrop = false,
+                    maxFrames = 5,
+                    onNoFace = { createCenterSquareThumbnail(it) }
+                )
+                val keyframes = if (extRes.crops.isNotEmpty()) extRes.crops else listOf(createSyntheticFaceBitmap("Sin Rostro Video"))
+                val hasFace = extRes.hasFace
+                val audioRes = AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, uri)
                 ProcessedMediaPayload(
                     mediaType = MediaType.VIDEO_MULTIMODAL,
-                    audioSpectrogram = audioSpectrogram,
-                    faceKeyframe = faceKeyframe,
+                    audioSpectrogram = audioRes?.spectrogramBitmap,
+                    faceKeyframe = keyframes.firstOrNull(),
+                    faceKeyframes = keyframes,
                     filename = getFileNameFromUri(uri),
                     faceDetected = hasFace,
-                    discardReason = if (!hasFace) "Advertencia: Sin detección facial en fotogramas de video" else null
+                    discardReason = if (!hasFace) "Advertencia: Sin deteccion facial en fotogramas de video" else null,
+                    audioPcm = audioRes?.pcmFull16k ?: audioRes?.pcm48k,
+                    faceKeyframesQualities = extRes.qualities,
+                    audioConfidence = audioRes?.audioConfidence ?: 1.0f
                 )
             }
             MediaType.UNKNOWN -> {
-                val dummySpectrogram = loadBitmapFromAsset("samples/audio_fake_spec.png") ?: createSyntheticSpectrogramBitmap()
-                val dummyFace = loadBitmapFromAsset("samples/image_fake_face.jpg") ?: createSyntheticFaceBitmap("Rostro Extraído")
                 ProcessedMediaPayload(
-                    mediaType = MediaType.VIDEO_MULTIMODAL,
-                    audioSpectrogram = dummySpectrogram,
-                    faceKeyframe = dummyFace,
-                    filename = "media_desconocida",
-                    faceDetected = true
+                    mediaType = MediaType.UNKNOWN,
+                    audioSpectrogram = null,
+                    faceKeyframe = null,
+                    faceKeyframes = emptyList(),
+                    filename = getFileNameFromUri(uri),
+                    faceDetected = false,
+                    discardReason = "Formato de archivo no compatible o sin contenido audiovisual"
                 )
             }
         }
@@ -324,23 +375,37 @@ class MediaRouter(private val context: Context) {
     }
 
     private fun resolveMediaType(uri: Uri, mimeType: String?): MediaType {
-        val pathStr = uri.toString().lowercase()
+        val resolvedMime = (mimeType ?: try { context.contentResolver.getType(uri) } catch (_: Exception) { null })?.lowercase()
+        val displayName = getFileNameFromUri(uri).lowercase()
+        val ext = displayName.substringAfterLast('.', "").substringBefore('?').trim()
+        val pathLower = uri.toString().lowercase()
+
+        val audioExts = setOf("opus", "ogg", "m4a", "aac", "amr", "wav", "flac", "3ga", "mp3", "wma")
+        val imageExts = setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "bmp")
+        val videoExts = setOf("mp4", "mkv", "3gp", "webm", "avi", "mov", "m4v")
+
         return when {
-            mimeType?.startsWith("audio/") == true || pathStr.contains(".opus") || pathStr.contains(".mp3") || pathStr.contains(".wav") -> MediaType.AUDIO_ONLY
-            mimeType?.startsWith("image/") == true || pathStr.contains(".jpg") || pathStr.contains(".png") || pathStr.contains(".jpeg") -> MediaType.IMAGE_ONLY
-            mimeType?.startsWith("video/") == true || pathStr.contains(".mp4") || pathStr.contains(".mkv") -> MediaType.VIDEO_MULTIMODAL
-            else -> MediaType.VIDEO_MULTIMODAL
+            resolvedMime?.startsWith("audio/") == true ||
+                resolvedMime == "application/ogg" ||
+                ext in audioExts ||
+                listOf(".opus", ".ogg", ".m4a", ".aac", ".amr", ".wav", ".flac", ".3ga", ".mp3").any { pathLower.contains(it) } -> MediaType.AUDIO_ONLY
+            resolvedMime?.startsWith("image/") == true ||
+                ext in imageExts ||
+                listOf(".jpg", ".jpeg", ".png", ".webp", ".heic").any { pathLower.contains(it) } -> MediaType.IMAGE_ONLY
+            resolvedMime?.startsWith("video/") == true ||
+                ext in videoExts ||
+                listOf(".mp4", ".mkv", ".3gp", ".webm", ".avi", ".mov").any { pathLower.contains(it) } -> MediaType.VIDEO_MULTIMODAL
+            else -> MediaType.UNKNOWN
         }
     }
 
-    fun generateSpectrogramFromAudio(uri: Uri): Bitmap {
+    fun generateSpectrogramFromAudio(uri: Uri): Bitmap? {
         Log.d(TAG, "Generando espectrograma real STFT desde audio: $uri")
         return try {
-            val result = com.detectorpreventor.app.ml.AudioSpectrogramGenerator.generateSpectrogram(context, uri)
-            result.spectrogramBitmap
+            AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, uri)?.spectrogramBitmap
         } catch (e: Exception) {
             Log.e(TAG, "Error al generar espectrograma desde audio: ${e.message}")
-            createSyntheticSpectrogramBitmap()
+            null
         }
     }
 
@@ -366,103 +431,38 @@ class MediaRouter(private val context: Context) {
         }
     }
 
-    private fun extractKeyframeFromVideo(uri: Uri): Pair<Bitmap, Boolean> {
-        val retriever = MediaMetadataRetriever()
-        var frame: Bitmap? = null
-        return try {
-            retriever.setDataSource(context, uri)
-            frame = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                ?: retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                ?: retriever.frameAtTime
-            if (frame != null) {
-                val res = detectAndCropFace(frame)
-                if (res.first !== frame && !frame.isRecycled) {
-                    frame.recycle()
-                }
-                res
-            } else {
-                Pair(createSyntheticFaceBitmap("Sin Rostro Video"), false)
-            }
-        } catch (e: Throwable) {
-            Log.e(TAG, "Error al extraer fotograma del video: ${e.message}")
-            if (frame != null && !frame.isRecycled) {
-                frame.recycle()
-            }
-            Pair(createSyntheticFaceBitmap("Sin Rostro Video"), false)
-        } finally {
-            try { retriever.release() } catch (_: Throwable) {}
+    private fun extractKeyframesFromVideo(uri: Uri, maxFrames: Int = 5): Pair<List<Bitmap>, Boolean> {
+        val extRes = VisionClassifier.extractBestFiveVideoKeyframes(
+            context = context,
+            uri = uri,
+            detector = blazeFaceDetector,
+            forceTightCrop = false,
+            maxFrames = maxFrames,
+            onNoFace = { createCenterSquareThumbnail(it) }
+        )
+        return if (extRes.crops.isNotEmpty()) {
+            Pair(extRes.crops, extRes.hasFace)
+        } else {
+            Pair(listOf(createSyntheticFaceBitmap("Sin Rostro Video")), false)
         }
     }
 
-    private fun detectAndCropFace(source: Bitmap): Pair<Bitmap, Boolean> {
+    private fun extractKeyframeFromVideo(uri: Uri): Pair<Bitmap, Boolean> {
+        val (frames, hasFace) = extractKeyframesFromVideo(uri, maxFrames = 1)
+        return Pair(frames.firstOrNull() ?: createSyntheticFaceBitmap("Sin Rostro Video"), hasFace)
+    }
+
+    private fun detectAndCropFace(source: Bitmap, forceTightCrop: Boolean = false): Pair<Bitmap, Boolean> {
         if (source.isRecycled || source.width <= 0 || source.height <= 0) {
             return Pair(createSyntheticFaceBitmap("Sin Rostro"), false)
         }
-        var normalizedSource: Bitmap? = null
-        var croppedTemp: Bitmap? = null
-        return try {
-            val maxDim = maxOf(source.width, source.height)
-            val target = if (maxDim > 800) {
-                val scale = 800f / maxDim
-                val scaled = Bitmap.createScaledBitmap(
-                    source,
-                    maxOf(1, (source.width * scale).toInt()),
-                    maxOf(1, (source.height * scale).toInt()),
-                    true
-                )
-                normalizedSource = scaled
-                scaled
-            } else {
-                source
-            }
-
-            val inputImage = InputImage.fromBitmap(target, 0)
-            val faces = synchronized(TfliteExecutionLock.faceLock) {
-                Tasks.await(blazeFaceDetector.process(inputImage))
-            }
-
-            if (faces.isNotEmpty()) {
-                val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() } ?: faces[0]
-                val box = face.boundingBox
-
-                val marginX = (box.width() * 0.15f).toInt()
-                val marginY = (box.height() * 0.15f).toInt()
-                val left = (box.left - marginX).coerceIn(0, target.width - 1)
-                val top = (box.top - marginY).coerceIn(0, target.height - 1)
-                val right = (box.right + marginX).coerceIn(left + 1, target.width)
-                val bottom = (box.bottom + marginY).coerceIn(top + 1, target.height)
-                val cropW = right - left
-                val cropH = bottom - top
-
-                if (cropW > 24 && cropH > 24) {
-                    val cropped = Bitmap.createBitmap(target, left, top, cropW, cropH)
-                    croppedTemp = cropped
-                    val result = if (cropW == 224 && cropH == 224) {
-                        croppedTemp = null
-                        cropped
-                    } else {
-                        Bitmap.createScaledBitmap(cropped, 224, 224, true)
-                    }
-                    Log.d(TAG, "BlazeFace: Rostro detectado [x=$left, y=$top, dim=${cropW}x${cropH}]. Margen pericial 15% aplicado.")
-                    return Pair(result, true)
-                }
-            }
-
-            Log.i(TAG, "BlazeFace: No se detectó rostro humano en la imagen. Protocolo de descarte automático activo.")
-            Pair(createCenterSquareThumbnail(target), false)
-        } catch (e: Throwable) {
-            Log.w(TAG, "Detección facial BlazeFace con fallback: ${e.message}")
-            Pair(createCenterSquareThumbnail(source), false)
-        } finally {
-            val ct = croppedTemp
-            if (ct != null && ct !== source && ct !== normalizedSource && !ct.isRecycled) {
-                ct.recycle()
-            }
-            val ns = normalizedSource
-            if (ns != null && ns !== source && !ns.isRecycled) {
-                ns.recycle()
-            }
-        }
+        return VisionClassifier.detectAndCropFaceWithDetector(
+            detector = blazeFaceDetector,
+            source = source,
+            targetSize = 224,
+            forceTightCrop = forceTightCrop,
+            onNoFace = { createCenterSquareThumbnail(it) }
+        )
     }
 
     private fun createCenterSquareThumbnail(source: Bitmap): Bitmap {
@@ -480,14 +480,13 @@ class MediaRouter(private val context: Context) {
         return scaled
     }
 
-    private fun generateSpectrogramFromAudioTrack(uri: Uri): Bitmap {
+    private fun generateSpectrogramFromAudioTrack(uri: Uri): Bitmap? {
         Log.d(TAG, "Extrayendo y procesando audio de video para espectrograma STFT: $uri")
         return try {
-            val result = com.detectorpreventor.app.ml.AudioSpectrogramGenerator.generateSpectrogram(context, uri)
-            result.spectrogramBitmap
+            AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(context, uri)?.spectrogramBitmap
         } catch (e: Exception) {
             Log.e(TAG, "Fallo procesando audio de video: ${e.message}")
-            createSyntheticSpectrogramBitmap()
+            null
         }
     }
 
@@ -508,44 +507,106 @@ class MediaRouter(private val context: Context) {
         return bitmap
     }
 
-    private fun createSyntheticFaceBitmap(label: String): Bitmap {
+    private fun loadWavPcm48kFromAsset(assetPath: String): FloatArray? {
+        return try {
+            context.assets.open(assetPath).use { inputStream ->
+                AudioSpectrogramGenerator.buildPcm48kFromWavBytes(inputStream.readBytes())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cargando audio WAV asset $assetPath: ${e.message}")
+            null
+        }
+    }
+
+    private fun wavAssetFromSampleSpec(assetPath: String): String {
+        return when {
+            assetPath.endsWith(".wav", ignoreCase = true) -> assetPath
+            assetPath == "samples/audio_real_spec.png" -> "samples/01_voz_humana_real_bonafide_1.wav"
+            assetPath == "samples/audio_fake_spec.png" -> "samples/06_clonacion_ia_spoof_tts_1.wav"
+            assetPath.endsWith("_spec.png") -> assetPath.removeSuffix("_spec.png") + ".wav"
+            else -> "samples/01_voz_humana_real_bonafide_1.wav"
+        }
+    }
+
+    private fun specAssetFromAudioAsset(assetPath: String): String {
+        return if (assetPath.endsWith(".wav", ignoreCase = true)) {
+            assetPath.removeSuffix(".wav") + "_spec.png"
+        } else {
+            assetPath
+        }
+    }
+
+    private fun pairedAudioAssetFromVideoAsset(storedUriStr: String?): String? {
+        if (storedUriStr.isNullOrBlank()) return null
+        return if (storedUriStr.contains("06_deepfake")) {
+            "samples/06_clonacion_ia_spoof_tts_1_spec.png"
+        } else if (storedUriStr.contains("01_retrato")) {
+            "samples/01_voz_humana_real_bonafide_1_spec.png"
+        } else {
+            null
+        }
+    }
+
+    private fun pairedAudioWavFromVideoAsset(storedUriStr: String?): String? {
+        if (storedUriStr.isNullOrBlank()) return null
+        return if (storedUriStr.contains("06_deepfake")) {
+            "samples/06_clonacion_ia_spoof_tts_1.wav"
+        } else if (storedUriStr.contains("01_retrato")) {
+            "samples/01_voz_humana_real_bonafide_1.wav"
+        } else {
+            null
+        }
+    }
+
+    private fun createSyntheticLandscapeBitmap(): Bitmap {
         val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val paint = Paint()
-
-        canvas.drawColor(Color.rgb(15, 23, 42))
-
-        paint.color = Color.argb(45, 56, 189, 248)
-        paint.strokeWidth = 1f
-        for (i in 0..224 step 28) {
-            canvas.drawLine(i.toFloat(), 0f, i.toFloat(), 224f, paint)
-            canvas.drawLine(0f, i.toFloat(), 224f, i.toFloat(), paint)
+        canvas.drawColor(Color.rgb(12, 74, 110))
+        paint.color = Color.rgb(3, 105, 161)
+        canvas.drawRect(0f, 70f, 224f, 140f, paint)
+        val mountainPath = android.graphics.Path().apply {
+            moveTo(0f, 175f)
+            lineTo(55f, 95f)
+            lineTo(118f, 155f)
+            lineTo(175f, 88f)
+            lineTo(224f, 175f)
+            close()
         }
+        paint.color = Color.rgb(30, 41, 59)
+        canvas.drawPath(mountainPath, paint)
+        paint.color = Color.rgb(20, 83, 45)
+        canvas.drawRect(0f, 175f, 224f, 224f, paint)
+        return bitmap
+    }
 
-        paint.style = Paint.Style.STROKE
-        paint.color = Color.rgb(239, 68, 68)
-        paint.strokeWidth = 2f
-        canvas.drawRect(52f, 36f, 172f, 170f, paint)
-
-        paint.color = Color.rgb(99, 102, 241)
-        paint.strokeWidth = 2.5f
-        canvas.drawOval(66f, 48f, 158f, 156f, paint)
-
-        paint.style = Paint.Style.FILL
-        paint.color = Color.rgb(56, 189, 248)
-        canvas.drawCircle(94f, 92f, 5f, paint)
-        canvas.drawCircle(130f, 92f, 5f, paint)
-        paint.strokeWidth = 2f
-        canvas.drawLine(98f, 130f, 126f, 130f, paint)
-
-        paint.color = Color.WHITE
-        paint.textSize = 13f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText(label, 112f, 202f, paint)
+    private fun createSyntheticFaceBitmap(label: String): Bitmap {
+        val bitmap = createSyntheticLandscapeBitmap()
+        val canvas = Canvas(bitmap)
+        val paint = Paint().apply {
+            color = Color.WHITE
+            textSize = 13f
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText(label, 112f, 206f, paint)
         return bitmap
     }
 
     private fun getFileNameFromUri(uri: Uri): String {
-        return uri.lastPathSegment ?: "muestra_multimodal"
+        var result: String? = null
+        if (uri.scheme == "content") {
+            try {
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) {
+                            result = cursor.getString(idx)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+        return result?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment ?: "muestra_multimodal"
     }
 }

@@ -51,6 +51,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
             </intent-filter>

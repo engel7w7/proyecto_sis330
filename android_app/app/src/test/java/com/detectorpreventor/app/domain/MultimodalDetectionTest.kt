@@ -124,4 +124,41 @@ class MultimodalDetectionTest {
         val sigHigh = (1.0 / (1.0 + Math.exp(-logitPositive))).toFloat()
         assertTrue(sigHigh > 0.95f)
     }
+
+    @Test
+    fun testFaceDiscardNeutralizesImageOnlyToZeroRisk() {
+        val result = RiskScorer.calculateGlobalRisk(
+            audioProb = null,
+            visionProb = 0.85f,
+            isFaceDetected = false
+        )
+        assertEquals(0.0f, result.globalRiskPercentage, 0.001f)
+        assertEquals(RiskLevel.BAJO, result.riskLevel)
+        assertTrue(result.wasFaceDiscarded)
+    }
+
+    @Test
+    fun testVideoRuleThreeOfFiveTriggersOnClonedAudioEvenWithCleanFrames() {
+        val cleanFrames = listOf(0.05f, 0.08f, 0.12f, 0.04f, 0.09f)
+        val result = RiskScorer.calculateVideoRisk(
+            audioProb = 0.91f,
+            frameProbs = cleanFrames,
+            isFaceDetected = true
+        )
+        assertEquals(RiskLevel.ALTO, result.riskLevel)
+        assertTrue(result.globalRiskPercentage >= 85.0f)
+        assertTrue(result.diagnosticSummary.contains("Regla 3/5 Video"))
+    }
+
+    @Test
+    fun testVideoRuleNeutralizesVisualChannelWhenNoFaceDetected() {
+        val fakeAudio = 0.05f
+        val result = RiskScorer.calculateVideoRisk(
+            audioProb = fakeAudio,
+            frameProbs = listOf(0.95f, 0.92f),
+            isFaceDetected = false
+        )
+        assertTrue(result.wasFaceDiscarded)
+        assertEquals(0.0f, result.visionFraudProb, 0.001f)
+    }
 }

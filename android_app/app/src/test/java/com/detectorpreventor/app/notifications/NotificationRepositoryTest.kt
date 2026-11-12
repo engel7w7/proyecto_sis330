@@ -447,4 +447,38 @@ class NotificationRepositoryTest {
         assertTrue(errors.isEmpty(), "Operaciones concurrentes lanzaron excepcion: ${errors.firstOrNull()?.message}")
         assertTrue(NotificationRepository.notifications.value.size <= 50)
     }
+
+    @Test
+    fun testPendingFileUriRoundtripAndFaceDiscardState() {
+        val fusionZero = FusionResult(
+            globalRiskPercentage = 0.0f,
+            audioFraudProb = 0.0f,
+            visionFraudProb = 0.0f,
+            riskLevel = RiskLevel.BAJO,
+            weightAudio = 1.0f,
+            weightVision = 0.0f,
+            diagnosticSummary = "Esperando inferencia local",
+            wasFaceDiscarded = false
+        )
+        val pendingFileNotif = InterceptedNotification(
+            id = "pending-opus-1",
+            appName = "WhatsApp",
+            packageName = "com.whatsapp",
+            sender = "Contacto",
+            text = "Nota de voz (Descargando en WhatsApp...)",
+            timestamp = 1715000001000L,
+            mediaType = MediaType.AUDIO_ONLY,
+            riskScore = 0.0f,
+            isThreat = false,
+            fusionResult = fusionZero,
+            mediaUriString = "file:///storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp%20Voice%20Notes/PTT-20261109-WA0001.opus"
+        )
+        assertTrue(pendingFileNotif.isPendingDownload())
+        assertFalse(pendingFileNotif.isFaceDiscarded())
+
+        val restored = InterceptedNotification.fromJson(pendingFileNotif.toJson())
+        assertEquals(pendingFileNotif.mediaUriString, restored.mediaUriString)
+        assertTrue(restored.isPendingDownload())
+        assertFalse(restored.isFaceDiscarded())
+    }
 }

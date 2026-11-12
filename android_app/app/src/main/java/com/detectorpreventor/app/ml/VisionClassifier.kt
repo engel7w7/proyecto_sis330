@@ -48,11 +48,6 @@ class VisionClassifier(private val context: Context) {
             val height: Int get() = bottom - top
         }
 
-        /**
-         * Encuadre adaptativo alineado con el entrenamiento multi-dominio:
-         * - Retratos cercanos (frac >= 0.42): conserva cabeza/cabello/contorno igual que SDXL/StyleGAN/JamieWithofs.
-         * - Escenas amplias o fotogramas de video: aplica recorte BlazeFace + 15% igual que FF++/Thien0103.
-         */
         fun computeAdaptiveFaceCropRect(
             imgWidth: Int,
             imgHeight: Int,

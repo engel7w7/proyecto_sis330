@@ -474,7 +474,6 @@ class AudioClassifier(private val context: Context) {
         val gridH = 16
         val normGrid = Array(gridH) { y ->
             val yNorm = y.toFloat() / (gridH - 1).toFloat()
-            // Formant band emphasis over vocal frequency region [0.20 .. 0.90]
             val bandEnv = kotlin.math.exp(-((yNorm - 0.60f) * (yNorm - 0.60f)) / 0.14f).coerceIn(0.22f, 1.0f)
             FloatArray(frameScores.size) { x ->
                 (frameScores[x] * bandEnv).coerceIn(0f, 1f)

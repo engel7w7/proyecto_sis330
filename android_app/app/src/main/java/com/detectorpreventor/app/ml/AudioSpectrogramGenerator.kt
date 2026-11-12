@@ -578,8 +578,8 @@ object AudioSpectrogramGenerator {
                 audioFormat = bb.short.toInt() and 0xFFFF
                 channels = maxOf(1, bb.short.toInt() and 0xFFFF)
                 sampleRate = maxOf(8000, bb.int)
-                bb.int // byteRate
-                bb.short // blockAlign
+                bb.int
+                bb.short
                 bitsPerSample = bb.short.toInt() and 0xFFFF
             } else if (chunkId == "data" && payloadStart <= bytes.size) {
                 dataOffset = payloadStart
@@ -644,7 +644,6 @@ object AudioSpectrogramGenerator {
             return output
         }
 
-        // Anti-aliased Blackman-windowed sinc downsampler aligned 1:1 with kotlin_spectrogram.py
         val fc = 0.45 * ratio
         val radius = ceil(8.0 / ratio).toInt().coerceIn(8, 48)
         val n = input.size
@@ -790,7 +789,6 @@ object AudioSpectrogramGenerator {
         val melMap1024 = MelPoolMap(FFT_LONG)
         val melMap256 = MelPoolMap(FFT_SHORT)
 
-        // Canal R (ch0): STFT larga 1024-FFT en escala Mel forense (alta densidad armonica 0..4 kHz + banda completa hasta 8 kHz)
         val db1 = FloatArray(BITMAP_SIZE * NUM_FRAMES)
         var maxDb1 = -Float.MAX_VALUE
         var minDb1 = Float.MAX_VALUE
@@ -826,7 +824,6 @@ object AudioSpectrogramGenerator {
         val floor1 = maxOf(minDb1, maxDb1 - 80.0f)
         val denom1 = maxOf(1.0f, maxDb1 - floor1)
 
-        // Canal G (ch1): CMVN por fila de frecuencia sobre tramas de voz activa (sin silencios muertos)
         val ch1 = FloatArray(BITMAP_SIZE * NUM_FRAMES)
         for (py in 0 until BITMAP_SIZE) {
             val rowBase = py * NUM_FRAMES
@@ -847,7 +844,6 @@ object AudioSpectrogramGenerator {
             }
         }
 
-        // Canal B (ch2): Pre-enfasis (0.97) + STFT corta 256-FFT Mel-alineada (+384 muestras) para transitorios de vocoder
         val xPe = FloatArray(TARGET_SAMPLES)
         xPe[0] = safeAudio[0]
         var pMax = abs(xPe[0])
@@ -907,7 +903,6 @@ object AudioSpectrogramGenerator {
             pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
         }
 
-        // Indicadores acusticos fisicos sobre el espectro 1024-FFT
         val idx4k = (numBins1 * 4000) / (TARGET_SAMPLE_RATE / 2)
         val idx2k = (numBins1 * 2000) / (TARGET_SAMPLE_RATE / 2)
         var hfEnergySum = 0.0

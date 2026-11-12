@@ -59,10 +59,10 @@ class AudioClassifierTest {
         val channels = 3
         val weights = floatArrayOf(1.0f, -0.5f, 2.0f)
         val featureGrid = floatArrayOf(
-            0.0f, 2.0f, 0.0f, // (0,0) -> ReLU(-1.0) = 0.0 -> norm 0.0
-            1.0f, 0.0f, 0.5f, // (0,1) -> 2.0 -> norm 0.5
-            2.0f, 0.0f, 1.0f, // (1,0) -> 4.0 -> norm 1.0
-            0.5f, 1.0f, 0.5f  // (1,1) -> 1.0 -> norm 0.25
+            0.0f, 2.0f, 0.0f,
+            1.0f, 0.0f, 0.5f,
+            2.0f, 0.0f, 1.0f,
+            0.5f, 1.0f, 0.5f
         )
         val cam = AudioClassifier.computeNormalizedGradCamGrid(
             featureGrid = featureGrid,

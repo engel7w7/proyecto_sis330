@@ -564,7 +564,6 @@ class MainActivity : ComponentActivity() {
                     return@launch
                 }
 
-                // Auto-resolve if pending before inspecting
                 val currentNotif = if (notif.isPendingDownload()) {
                     val resolved = NotificationRepository.resolveSinglePendingNotification(this@MainActivity, notif)
                     NotificationRepository.updateNotification(resolved)
@@ -659,7 +658,6 @@ class MainActivity : ComponentActivity() {
                 )
                 NotificationRepository.addNotification(pendingNotif)
 
-                // Simulated download delay
                 kotlinx.coroutines.delay(1000L)
 
                 if (!NotificationRepository.hasNotification(notifId)) {

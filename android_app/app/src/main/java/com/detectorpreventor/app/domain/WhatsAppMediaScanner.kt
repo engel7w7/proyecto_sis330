@@ -153,7 +153,6 @@ object WhatsAppMediaScanner {
     fun scanWhatsAppAudio(context: Context, maxItems: Int = 60): List<WhatsAppAudioItem> {
         val deduped = LinkedHashMap<String, WhatsAppAudioItem>()
 
-        // 1. Direct filesystem traversal (bypasses .nomedia inside WhatsApp Voice Notes when authorized)
         for (rootDir in candidateWhatsAppRoots()) {
             try {
                 if (!rootDir.exists() || !rootDir.isDirectory || !rootDir.canRead()) continue
@@ -183,7 +182,6 @@ object WhatsAppMediaScanner {
             }
         }
 
-        // 2. Persisted Storage Access Framework (OpenDocumentTree) folders picked by user
         try {
             val perms = context.contentResolver.persistedUriPermissions
             for (perm in perms) {
@@ -204,7 +202,6 @@ object WhatsAppMediaScanner {
         } catch (_: Throwable) {
         }
 
-        // 3. MediaStore fallback (captures non-.nomedia WhatsApp audio files)
         try {
             val projection = mutableListOf(
                 MediaStore.Audio.Media._ID,

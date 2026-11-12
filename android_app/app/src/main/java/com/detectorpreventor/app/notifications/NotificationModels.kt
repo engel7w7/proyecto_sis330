@@ -318,7 +318,6 @@ object NotificationRepository {
     private fun addNotificationLocked(item: InterceptedNotification) {
         val currentList = _notifications.value.toMutableList()
 
-        // 1. If exact ID match, replace in place
         val indexById = currentList.indexOfFirst { it.id == item.id }
         if (indexById != -1) {
             val existing = currentList[indexById]
@@ -333,7 +332,6 @@ object NotificationRepository {
             return
         }
 
-        // 2. If matching a recent pending item from the same contact/package/type, replace it
         val pendingIndex = currentList.indexOfFirst { existing ->
             existing.packageName == item.packageName &&
                 existing.sender.equals(item.sender, ignoreCase = true) &&
@@ -354,7 +352,6 @@ object NotificationRepository {
             return
         }
 
-        // 3. Deduplicate exact duplicate texts arriving within 4 seconds
         val existingIndex = currentList.indexOfFirst { existing ->
             existing.packageName == item.packageName &&
                 existing.sender.equals(item.sender, ignoreCase = true) &&

@@ -964,7 +964,6 @@ fun UploadView(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Direct WhatsApp .opus Voice Notes & Audios Scanner
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
             shape = RoundedCornerShape(14.dp),

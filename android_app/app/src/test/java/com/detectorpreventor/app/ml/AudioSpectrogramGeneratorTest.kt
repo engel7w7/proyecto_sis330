@@ -157,8 +157,8 @@ class AudioSpectrogramGeneratorTest {
         wav.put("WAVE".toByteArray(Charsets.US_ASCII))
         wav.put("fmt ".toByteArray(Charsets.US_ASCII))
         wav.putInt(16)
-        wav.putShort(1.toShort()) // PCM
-        wav.putShort(1.toShort()) // mono
+        wav.putShort(1.toShort())
+        wav.putShort(1.toShort())
         wav.putInt(sampleRate)
         wav.putInt(sampleRate * 2)
         wav.putShort(2.toShort())
@@ -176,15 +176,13 @@ class AudioSpectrogramGeneratorTest {
     @Test
     fun testDownsampleRejectsNyquistAliasingAt44100Hz() {
         val sr = 44100
-        val n = sr // 1 second
+        val n = sr
         val sig = FloatArray(n) { i ->
             val t = i.toDouble() / sr.toDouble()
-            // 13 kHz tone (> 8 kHz Nyquist of 16 kHz) that naive linear interpolation aliases into ~3 kHz
             sin(2.0 * PI * 13000.0 * t).toFloat()
         }
         val down = AudioSpectrogramGenerator.resampleAudio(sig, sr, 16000)
         assertEquals((n * (16000.0 / sr)).toInt(), down.size)
-        // Skip filter edge transient (first/last 64 samples), verify >40 dB attenuation (rms < 0.01)
         var sumSq = 0.0
         var cnt = 0
         for (i in 64 until down.size - 64) {

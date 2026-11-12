@@ -17,8 +17,152 @@ class AudioClassifier(private val context: Context) {
         private const val TAG = "AudioClassifier"
         private const val MODEL_FILE = "experto_audio_int8.tflite"
         private const val ALT_MODEL_FILE = "modelo_audio_int8.tflite"
+        private const val GRADCAM_WEIGHTS_FILE = "audio_gradcam_weights.bin"
         private const val INPUT_SIZE = 224
         private const val PIXEL_SIZE = 3
+        private const val TARGET_SAMPLES = 48000
+        internal const val AUDIO_TEMPERATURE = 0.60f
+        internal const val AUDIO_FAKE_INDEX = 1
+
+        internal fun normalizePcm48k(pcm: FloatArray): FloatArray {
+            val out = FloatArray(TARGET_SAMPLES)
+            val copyLen = minOf(pcm.size, TARGET_SAMPLES)
+            if (copyLen > 0) {
+                System.arraycopy(pcm, 0, out, 0, copyLen)
+            }
+            var maxAbs = 0.0f
+            for (s in out) {
+                val a = kotlin.math.abs(s)
+                if (a > maxAbs) maxAbs = a
+            }
+            if (maxAbs > 1e-3f) {
+                val inv = 1.0f / maxAbs
+                for (i in out.indices) {
+                    out[i] *= inv
+                }
+            }
+            return out
+        }
+
+        internal fun computeTemporalFrameImportance(
+            hiddenStates: FloatArray,
+            attWeights: FloatArray?,
+            numFrames: Int,
+            hiddenDim: Int,
+            contrastWeights: FloatArray?,
+            isFakeDominant: Boolean = true
+        ): FloatArray {
+            if (numFrames <= 0 || hiddenDim <= 0) return FloatArray(0)
+            val scores = FloatArray(numFrames)
+            val totalHidden = hiddenStates.size
+            val hasContrast = contrastWeights != null && contrastWeights.size >= hiddenDim
+            var minVal = Float.MAX_VALUE
+            var maxVal = -Float.MAX_VALUE
+
+            for (t in 0 until numFrames) {
+                val att = if (attWeights != null && t < attWeights.size) maxOf(attWeights[t], 0f) else 1f
+                var raw = att
+                if (hasContrast) {
+                    var dot = 0f
+                    val base = t * hiddenDim
+                    val lim = minOf(hiddenDim, totalHidden - base)
+                    val w = contrastWeights!!
+                    for (c in 0 until lim) {
+                        dot += hiddenStates[base + c] * w[c]
+                    }
+                    val signedDot = if (isFakeDominant) dot else -dot
+                    raw = att * (if (signedDot > 0f) signedDot else 0f)
+                }
+                scores[t] = raw
+                if (raw < minVal) minVal = raw
+                if (raw > maxVal) maxVal = raw
+            }
+
+            if (maxVal <= 1e-7f && attWeights != null && attWeights.size >= numFrames) {
+                minVal = Float.MAX_VALUE
+                maxVal = -Float.MAX_VALUE
+                for (t in 0 until numFrames) {
+                    val att = maxOf(attWeights[t], 0f)
+                    scores[t] = att
+                    if (att < minVal) minVal = att
+                    if (att > maxVal) maxVal = att
+                }
+            }
+
+            val range = if (maxVal - minVal > 1e-7f) maxVal - minVal else 1f
+            for (t in 0 until numFrames) {
+                scores[t] = ((scores[t] - minVal) / range).coerceIn(0f, 1f)
+            }
+            return scores
+        }
+
+        internal fun computeCalibratedProbFake(
+            logits: FloatArray,
+            temperature: Float = AUDIO_TEMPERATURE,
+            fakeIndex: Int = AUDIO_FAKE_INDEX
+        ): Float {
+            if (logits.isEmpty()) return 0.0f
+            val t = maxOf(1e-4, temperature.toDouble())
+            if (logits.size == 1) {
+                val z = (logits[0].toDouble() / t).coerceIn(-60.0, 60.0)
+                return (1.0 / (1.0 + Math.exp(-z))).toFloat().coerceIn(0.001f, 0.999f)
+            }
+            val safeFakeIdx = fakeIndex.coerceIn(0, logits.size - 1)
+            var maxScaled = Double.NEGATIVE_INFINITY
+            val scaled = DoubleArray(logits.size) { i ->
+                val v = logits[i].toDouble() / t
+                if (v > maxScaled) maxScaled = v
+                v
+            }
+            var sumExp = 0.0
+            val exps = DoubleArray(logits.size) { i ->
+                val e = Math.exp((scaled[i] - maxScaled).coerceIn(-60.0, 60.0))
+                sumExp += e
+                e
+            }
+            if (sumExp <= 0.0) return 0.0f
+            return (exps[safeFakeIdx] / sumExp).toFloat().coerceIn(0.001f, 0.999f)
+        }
+
+        internal fun computeNormalizedGradCamGrid(
+            featureGrid: FloatArray,
+            gridH: Int,
+            gridW: Int,
+            channels: Int,
+            weights: FloatArray?
+        ): Array<FloatArray> {
+            val rawCam = Array(gridH) { FloatArray(gridW) }
+            if (gridH <= 0 || gridW <= 0 || channels <= 0) return rawCam
+            var minVal = Float.MAX_VALUE
+            var maxVal = -Float.MAX_VALUE
+            val totalElements = minOf(featureGrid.size, gridH * gridW * channels)
+
+            for (y in 0 until gridH) {
+                for (x in 0 until gridW) {
+                    var sum = 0f
+                    val baseIdx = (y * gridW + x) * channels
+                    for (c in 0 until channels) {
+                        val idx = baseIdx + c
+                        if (idx >= totalElements) break
+                        val wVal = if (weights != null && c < weights.size) weights[c] else 0f
+                        sum += featureGrid[idx] * wVal
+                    }
+                    val relu = if (sum > 0f) sum else 0f
+                    rawCam[y][x] = relu
+                    if (relu < minVal) minVal = relu
+                    if (relu > maxVal) maxVal = relu
+                }
+            }
+
+            val range = if (maxVal - minVal > 1e-6f) maxVal - minVal else 1f
+            val normCam = Array(gridH) { FloatArray(gridW) }
+            for (y in 0 until gridH) {
+                for (x in 0 until gridW) {
+                    normCam[y][x] = (rawCam[y][x] - minVal) / range
+                }
+            }
+            return normCam
+        }
     }
 
     private var interpreter: Interpreter? = null
@@ -26,13 +170,33 @@ class AudioClassifier(private val context: Context) {
     private var isInitialized = false
 
     @Volatile
+    private var isRawWaveformModel = true
+
+    @Volatile
     private var isClosed = false
 
+    private var gradCamWeights: FloatArray? = null
     private val gradCamLock = Any()
     private var lastGradCamBitmap: Bitmap? = null
 
     init {
         initInterpreter()
+        loadGradCamWeights()
+    }
+
+    private fun loadGradCamWeights() {
+        try {
+            context.assets.open(GRADCAM_WEIGHTS_FILE).use { stream ->
+                val bytes = stream.readBytes()
+                val floatBuf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+                val weights = FloatArray(floatBuf.remaining())
+                floatBuf.get(weights)
+                gradCamWeights = weights
+                Log.i(TAG, "Pesos Grad-CAM de audio cargados exitosamente: ${weights.size} canales.")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo cargar $GRADCAM_WEIGHTS_FILE: ${e.message}")
+        }
     }
 
     private fun initInterpreter() {
@@ -43,16 +207,18 @@ class AudioClassifier(private val context: Context) {
                 if (modelBuffer != null) {
                     val cpuOptions = Interpreter.Options().apply {
                         setNumThreads(4)
-                        setUseXNNPACK(false)
+                        setUseXNNPACK(true)
                     }
                     val created = Interpreter(modelBuffer, cpuOptions)
                     interpreter = created
                     modelByteBuffer = modelBuffer
+                    val primaryInShape = if (created.inputTensorCount > 0) created.getInputTensor(0).shape() else IntArray(0)
+                    isRawWaveformModel = primaryInShape.size == 2
                     isInitialized = true
 
                     val inCount = created.inputTensorCount
                     val outCount = created.outputTensorCount
-                    Log.i(TAG, "AudioClassifier TFLite inicializado en CPU (4 hilos, XNNPACK=false). Entradas=$inCount, Salidas=$outCount")
+                    Log.i(TAG, "AudioClassifier TFLite inicializado en CPU (4 hilos, XNNPACK=true, rawPcm=$isRawWaveformModel). Entradas=$inCount, Salidas=$outCount")
                     for (i in 0 until inCount) {
                         val t = created.getInputTensor(i)
                         Log.i(TAG, "  In[$i]: shape=${t.shape().contentToString()}, dtype=${t.dataType()}, bytes=${t.numBytes()}")
@@ -63,7 +229,7 @@ class AudioClassifier(private val context: Context) {
                         Log.i(TAG, "  Out[$i]: shape=${t.shape().contentToString()}, dtype=${t.dataType()}, scale=${qp.scale}, zp=${qp.zeroPoint}, bytes=${t.numBytes()}")
                     }
                 } else {
-                    Log.e(TAG, "Archivo de modelo '$MODEL_FILE' no encontrado en assets. Operando en modo espectral.")
+                    Log.e(TAG, "Archivo de modelo '$MODEL_FILE' no encontrado en assets. AudioClassifier no disponible.")
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "Error inicializando AudioClassifier: ${t.message}", t)
@@ -84,234 +250,340 @@ class AudioClassifier(private val context: Context) {
         }
     }
 
-    fun classifySpectrogram(spectrogramBitmap: Bitmap, contextHint: String? = null): Float {
-        if (isClosed || spectrogramBitmap.isRecycled || spectrogramBitmap.width <= 0 || spectrogramBitmap.height <= 0) {
+    fun classifyPcm(
+        pcm: FloatArray,
+        @Suppress("UNUSED_PARAMETER") contextHint: String? = null
+    ): Float {
+        if (isClosed || pcm.isEmpty()) {
             setLastGradCamHeatmap(null)
-            return 0.05f
+            return 0.0f
         }
+        if (isInitialized && !isClosed) {
+            try {
+                if (isRawWaveformModel) {
+                    val normPcm = normalizePcm48k(pcm)
+                    val inputBuffer = ByteBuffer.allocateDirect(4 * TARGET_SAMPLES).order(ByteOrder.nativeOrder())
+                    val fb = inputBuffer.asFloatBuffer()
+                    fb.put(normPcm)
+                    inputBuffer.rewind()
+                    return executeAudioInference(inputBuffer)
+                } else {
+                    val windows = if (pcm.size > 72000) {
+                        AudioSpectrogramGenerator.extractMultiWindowTiledPcm48k(pcm, maxWindows = 3)
+                    } else {
+                        listOf(pcm)
+                    }
+                    if (windows.size <= 1) {
+                        val rgb = AudioSpectrogramGenerator.computeMultiScaleRgbPixels(windows[0])
+                        val bmp = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
+                        bmp.setPixels(rgb.pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
+                        return try {
+                            classifySpectrogram(bmp, contextHint)
+                        } finally {
+                            if (!bmp.isRecycled) bmp.recycle()
+                        }
+                    }
+                    var probSum = 0.0f
+                    var maxProb = -1.0f
+                    var bestHeatmap: Bitmap? = null
+                    for (winPcm in windows) {
+                        val rgb = AudioSpectrogramGenerator.computeMultiScaleRgbPixels(winPcm, applyVadTile = false)
+                        val bmp = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
+                        bmp.setPixels(rgb.pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
+                        val wp = try {
+                            classifySpectrogram(bmp, contextHint)
+                        } finally {
+                            if (!bmp.isRecycled) bmp.recycle()
+                        }
+                        probSum += wp
+                        if (wp > maxProb) {
+                            maxProb = wp
+                            bestHeatmap = getLastGradCamHeatmap()
+                        }
+                    }
+                    if (bestHeatmap != null) {
+                        setLastGradCamHeatmap(bestHeatmap)
+                    }
+                    return (probSum / windows.size.toFloat()).coerceIn(0.0f, 1.0f)
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error durante inferencia PCM TFLite: ${t.message}", t)
+            }
+        }
+        setLastGradCamHeatmap(null)
+        return 0.0f
+    }
 
-        val hint = contextHint?.lowercase() ?: ""
-        if ((hint.contains("real") || hint.contains("bonafide") || hint.contains("humana real") ||
-            hint.contains("auténtic") || hint.contains("autentic") || hint.contains("original") ||
-            hint.contains("audio_real") || hint.contains("video real") || hint.contains("voz real") ||
-            hint.contains("audio real") || hint.contains("01_voz") || hint.contains("02_voz") ||
-            hint.contains("03_voz") || hint.contains("04_voz") || hint.contains("05_voz")) &&
-            !hint.contains("clonaci") && !hint.contains("deepfake") && !hint.contains("tts") && !hint.contains("fake") && !hint.contains("ambiguo")) {
-            val prob = 0.045f
-            setLastGradCamHeatmap(generateSpectrogramGradCam(spectrogramBitmap, prob))
-            return prob
+    fun classifySpectrogram(
+        spectrogramBitmap: Bitmap,
+        @Suppress("UNUSED_PARAMETER") contextHint: String? = null
+    ): Float {
+        if (isClosed || isRawWaveformModel || spectrogramBitmap.isRecycled || spectrogramBitmap.width <= 0 || spectrogramBitmap.height <= 0) {
+            setLastGradCamHeatmap(null)
+            return 0.0f
         }
-        if ((hint.contains("fake") || hint.contains("clonaci") || hint.contains("deepfake") || hint.contains("tts") ||
-            hint.contains("replicada") || hint.contains("sintétic") || hint.contains("sintetic") ||
-            hint.contains("06_clonacion") || hint.contains("07_clonacion") || hint.contains("08_clonacion") ||
-            hint.contains("09_clonacion") || hint.contains("10_clonacion")) &&
-            !hint.contains("real") && !hint.contains("bonafide") && !hint.contains("original") && !hint.contains("ambiguo")) {
-            val prob = 0.955f
-            setLastGradCamHeatmap(generateSpectrogramGradCam(spectrogramBitmap, prob))
-            return prob
-        }
-
-        val sampleSignature = inspectBitmapSignature(spectrogramBitmap)
-        if (sampleSignature != null) {
-            setLastGradCamHeatmap(generateSpectrogramGradCam(spectrogramBitmap, sampleSignature))
-            return sampleSignature
-        }
-
-        val spectralProb = evaluateSpectralDistribution(spectrogramBitmap)
 
         if (isInitialized && !isClosed) {
             try {
                 val inputBuffer = convertBitmapToByteBuffer(spectrogramBitmap)
-                synchronized(TfliteExecutionLock.nativeLock) {
-                    val currentInterpreter = if (!isClosed) interpreter else null
-                    if (currentInterpreter != null && currentInterpreter.outputTensorCount > 0) {
-                        val outTensorCount = currentInterpreter.outputTensorCount
-                        val outputsMap = HashMap<Int, Any>(outTensorCount)
-                        val outputBuffers = ArrayList<ByteBuffer>(outTensorCount)
-                        for (i in 0 until outTensorCount) {
-                            val tensor = currentInterpreter.getOutputTensor(i)
-                            val buf = ByteBuffer.allocateDirect(tensor.numBytes()).order(ByteOrder.nativeOrder())
-                            outputBuffers.add(buf)
-                            outputsMap[i] = buf
-                        }
-
-                        currentInterpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputsMap)
-
-                        val outputTensor = currentInterpreter.getOutputTensor(0)
-                        val outBuf = outputBuffers[0]
-                        val score0 = readScalarValue(outBuf, outputTensor, 0)
-                        val rawProb = (1.0 / (1.0 + Math.exp(-((score0.toDouble() - 0.350) * 8.0)))).toFloat()
-
-                        val finalProb = (rawProb * 0.45f + spectralProb * 0.55f).coerceIn(0.01f, 0.99f)
-                        Log.i(TAG, "Inferencia TFLite Audio ejecutada -> score0=$score0, rawProb=$rawProb, spectral=$spectralProb, finalProb=$finalProb")
-                        setLastGradCamHeatmap(generateSpectrogramGradCam(spectrogramBitmap, finalProb))
-                        return finalProb
-                    }
-                }
+                return executeAudioInference(inputBuffer)
             } catch (t: Throwable) {
                 Log.e(TAG, "Error durante inferencia de audio TFLite: ${t.message}", t)
             }
         }
 
-        val finalProb = spectralProb
-        setLastGradCamHeatmap(generateSpectrogramGradCam(spectrogramBitmap, finalProb))
-        return finalProb
+        setLastGradCamHeatmap(null)
+        return 0.0f
     }
 
-    private fun readScalarValue(buffer: ByteBuffer, tensor: Tensor, index: Int): Float {
+    private fun executeAudioInference(inputBuffer: ByteBuffer): Float {
+        synchronized(TfliteExecutionLock.nativeLock) {
+            val currentInterpreter = if (!isClosed) interpreter else null
+            if (currentInterpreter != null) {
+                val outTensorCount = currentInterpreter.outputTensorCount
+                val outputsMap = HashMap<Int, Any>(outTensorCount)
+                val outputBuffers = ArrayList<ByteBuffer>(outTensorCount)
+                var logitTensorIdx = -1
+                var featureTensorIdx = -1
+                var hiddenStatesIdx = -1
+                var attWeightsIdx = -1
+
+                for (i in 0 until outTensorCount) {
+                    val tensor = currentInterpreter.getOutputTensor(i)
+                    val buf = ByteBuffer.allocateDirect(tensor.numBytes()).order(ByteOrder.nativeOrder())
+                    outputBuffers.add(buf)
+                    outputsMap[i] = buf
+                    val shape = tensor.shape()
+                    when {
+                        shape.size == 4 && shape[1] > 1 && shape[2] > 1 -> featureTensorIdx = i
+                        shape.size == 3 && shape[1] > 8 && shape[2] >= 128 -> hiddenStatesIdx = i
+                        shape.size == 3 && shape[1] > 8 && shape[2] == 1 -> attWeightsIdx = i
+                        shape.size == 2 && shape[1] in 2..8 -> logitTensorIdx = i
+                        logitTensorIdx == -1 && shape.size <= 2 && tensor.numElements() in 1..8 -> logitTensorIdx = i
+                    }
+                }
+                if (logitTensorIdx == -1 && outTensorCount > 0) {
+                    logitTensorIdx = 0
+                }
+
+                currentInterpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputsMap)
+
+                if (outTensorCount > 0) {
+                    val logitTensor = currentInterpreter.getOutputTensor(logitTensorIdx)
+                    val logitBuf = outputBuffers[logitTensorIdx].apply { rewind() }
+                    val logits = readLogits(logitBuf, logitTensor)
+                    val probFake = computeCalibratedProbFake(
+                        logits = logits,
+                        temperature = AUDIO_TEMPERATURE,
+                        fakeIndex = AUDIO_FAKE_INDEX
+                    )
+                    Log.i(
+                        TAG,
+                        "Inferencia TFLite Audio ejecutada -> logits=${logits.contentToString()}, T=$AUDIO_TEMPERATURE, probFake=$probFake"
+                    )
+
+                    val gradCamBmp = when {
+                        hiddenStatesIdx != -1 -> {
+                            val hTensor = currentInterpreter.getOutputTensor(hiddenStatesIdx)
+                            val hBuf = outputBuffers[hiddenStatesIdx].apply { rewind() }
+                            val hShape = hTensor.shape()
+                            val attData = if (attWeightsIdx != -1) {
+                                val aTensor = currentInterpreter.getOutputTensor(attWeightsIdx)
+                                val aBuf = outputBuffers[attWeightsIdx].apply { rewind() }
+                                readFloatTensor(aBuf, aTensor)
+                            } else {
+                                null
+                            }
+                            computeTemporalHeatmapBitmap(
+                                hiddenStates = readFloatTensor(hBuf, hTensor),
+                                attWeights = attData,
+                                numFrames = hShape[1],
+                                hiddenDim = hShape[2],
+                                riskProbability = probFake
+                            )
+                        }
+                        featureTensorIdx != -1 -> {
+                            val featTensor = currentInterpreter.getOutputTensor(featureTensorIdx)
+                            val featBuf = outputBuffers[featureTensorIdx].apply { rewind() }
+                            val featShape = featTensor.shape()
+                            val qp = featTensor.quantizationParams()
+                            computeGradCamBitmapFromBuffer(
+                                buffer = featBuf,
+                                gridH = featShape[1],
+                                gridW = featShape[2],
+                                channels = featShape[3],
+                                dataType = featTensor.dataType(),
+                                scale = if (qp.scale > 0f) qp.scale else 1f,
+                                zeroPoint = qp.zeroPoint,
+                                riskProbability = probFake
+                            )
+                        }
+                        else -> null
+                    }
+
+                    setLastGradCamHeatmap(gradCamBmp)
+                    return probFake
+                }
+            }
+        }
+        setLastGradCamHeatmap(null)
+        return 0.0f
+    }
+
+    private fun readFloatTensor(buffer: ByteBuffer, tensor: Tensor): FloatArray {
+        val count = tensor.numElements().coerceAtLeast(0)
+        if (count == 0) return FloatArray(0)
         buffer.rewind()
         val qp = tensor.quantizationParams()
         val scale = if (qp.scale > 0f) qp.scale else 1.0f
         return when (tensor.dataType()) {
             DataType.FLOAT32 -> {
                 val fb = buffer.asFloatBuffer()
-                if (index < fb.remaining()) fb.get(index) else 0f
+                val n = minOf(count, fb.remaining())
+                FloatArray(n) { fb.get() }
             }
             DataType.INT8 -> {
-                if (index < buffer.remaining()) (buffer.get(index).toInt() - qp.zeroPoint) * scale else 0f
+                val n = minOf(count, buffer.remaining())
+                FloatArray(n) { (buffer.get().toInt() - qp.zeroPoint) * scale }
             }
             DataType.UINT8 -> {
-                if (index < buffer.remaining()) ((buffer.get(index).toInt() and 0xFF) - qp.zeroPoint) * scale else 0f
+                val n = minOf(count, buffer.remaining())
+                FloatArray(n) { ((buffer.get().toInt() and 0xFF) - qp.zeroPoint) * scale }
             }
-            else -> 0f
+            else -> FloatArray(0)
         }
     }
 
-    private fun evaluateSpectralDistribution(bitmap: Bitmap): Float {
-        if (bitmap.isRecycled || bitmap.width <= 0 || bitmap.height <= 0) return 0.15f
-        val scaled = if (bitmap.width == 64 && bitmap.height == 64) {
-            bitmap
-        } else {
-            Bitmap.createScaledBitmap(bitmap, 64, 64, false)
+    private fun computeTemporalHeatmapBitmap(
+        hiddenStates: FloatArray,
+        attWeights: FloatArray?,
+        numFrames: Int,
+        hiddenDim: Int,
+        riskProbability: Float
+    ): Bitmap? {
+        val frameScores = computeTemporalFrameImportance(
+            hiddenStates = hiddenStates,
+            attWeights = attWeights,
+            numFrames = numFrames,
+            hiddenDim = hiddenDim,
+            contrastWeights = gradCamWeights,
+            isFakeDominant = riskProbability >= 0.5f
+        )
+        if (frameScores.isEmpty()) return null
+
+        val gridH = 16
+        val normGrid = Array(gridH) { y ->
+            val yNorm = y.toFloat() / (gridH - 1).toFloat()
+            // Formant band emphasis over vocal frequency region [0.20 .. 0.90]
+            val bandEnv = kotlin.math.exp(-((yNorm - 0.60f) * (yNorm - 0.60f)) / 0.14f).coerceIn(0.22f, 1.0f)
+            FloatArray(frameScores.size) { x ->
+                (frameScores[x] * bandEnv).coerceIn(0f, 1f)
+            }
         }
-        return try {
-            val w = scaled.width
-            val h = scaled.height
-            val pixels = IntArray(w * h)
-            scaled.getPixels(pixels, 0, w, 0, 0, w, h)
+        return renderHeatmapToBitmap(normGrid, gridH, frameScores.size, riskProbability)
+    }
 
-            var hfEnergy = 0.0
-            var lfEnergy = 0.0
-            var logSum = 0.0
-            var linearSum = 0.0
-
-            val rowThird = maxOf(1, h / 3)
-            var cumEnergy = 0.0
-            val totalEnergyByRow = DoubleArray(h)
-
-            for (y in 0 until h) {
-                var rowEnergy = 0.0
-                for (x in 0 until w) {
-                    val p = pixels[y * w + x]
-                    val lum = ((p and 0xFF) * 0.11 + ((p shr 8) and 0xFF) * 0.59 + ((p shr 16) and 0xFF) * 0.30) / 255.0
-
-                    rowEnergy += lum * lum
-                    linearSum += lum + 1e-6
-                    logSum += Math.log(lum + 1e-6)
-
-                    if (y < rowThird) {
-                        hfEnergy += lum
-                    } else if (y >= 2 * rowThird) {
-                        lfEnergy += lum
-                    }
-                }
-                totalEnergyByRow[y] = rowEnergy
-                cumEnergy += rowEnergy
+    private fun readLogits(buffer: ByteBuffer, tensor: Tensor): FloatArray {
+        val count = tensor.numElements().coerceAtLeast(0)
+        if (count == 0) return FloatArray(0)
+        buffer.rewind()
+        val qp = tensor.quantizationParams()
+        val scale = if (qp.scale > 0f) qp.scale else 1.0f
+        return when (tensor.dataType()) {
+            DataType.FLOAT32 -> {
+                val fb = buffer.asFloatBuffer()
+                val n = minOf(count, fb.remaining())
+                FloatArray(n) { fb.get() }
             }
-
-            val totalPixels = maxOf(1.0, (w * h).toDouble())
-            val geomMean = Math.exp(logSum / totalPixels)
-            val arithMean = linearSum / totalPixels
-            val flatness = (geomMean / maxOf(1e-6, arithMean)).toFloat()
-            val hfRatio = (hfEnergy / maxOf(1.0, lfEnergy)).toFloat()
-
-            var rolloffRow = 0
-            var accum = 0.0
-            val targetEnergy = cumEnergy * 0.85
-            for (y in 0 until h) {
-                accum += totalEnergyByRow[y]
-                if (accum >= targetEnergy) {
-                    rolloffRow = y
-                    break
-                }
+            DataType.INT8 -> {
+                val n = minOf(count, buffer.remaining())
+                FloatArray(n) { (buffer.get().toInt() - qp.zeroPoint) * scale }
             }
-            val rolloffFreq = ((h - 1 - rolloffRow).toFloat() / maxOf(1, h - 1)) * 8000f
-
-            val isNaturalFormantDominant = lfEnergy > (hfEnergy * 2.2) && hfRatio < 0.28f
-            val isVocoderArtifactPresent = hfRatio > 0.42f || (rolloffFreq > 3200f && flatness > 0.38f)
-
-            val score = when {
-                isNaturalFormantDominant && !isVocoderArtifactPresent -> {
-                    (0.045f + (hfRatio * 0.15f)).coerceIn(0.02f, 0.20f)
-                }
-                isVocoderArtifactPresent -> {
-                    (0.85f + (hfRatio * 0.25f)).coerceIn(0.80f, 0.98f)
-                }
-                else -> {
-                    val normHf = ((hfRatio - 0.25f) / 0.15f).coerceIn(-1.5f, 1.5f)
-                    val base = 0.40f + (normHf * 0.25f)
-                    base.coerceIn(0.15f, 0.85f)
-                }
+            DataType.UINT8 -> {
+                val n = minOf(count, buffer.remaining())
+                FloatArray(n) { ((buffer.get().toInt() and 0xFF) - qp.zeroPoint) * scale }
             }
-            score.coerceIn(0.01f, 0.99f)
-        } finally {
-            if (scaled !== bitmap && !scaled.isRecycled) {
-                scaled.recycle()
-            }
+            else -> FloatArray(0)
         }
     }
 
-    private fun generateSpectrogramGradCam(spectrogram: Bitmap, riskProbability: Float): Bitmap {
+    private fun computeGradCamBitmapFromBuffer(
+        buffer: ByteBuffer,
+        gridH: Int,
+        gridW: Int,
+        channels: Int,
+        dataType: DataType,
+        scale: Float,
+        zeroPoint: Int,
+        riskProbability: Float
+    ): Bitmap? {
+        if (gridH <= 0 || gridW <= 0 || channels <= 0) {
+            return null
+        }
+        val totalElements = gridH * gridW * channels
+        buffer.rewind()
+        val floatBuf = if (dataType == DataType.FLOAT32) buffer.asFloatBuffer() else null
+        val featureGrid = FloatArray(totalElements) { idx ->
+            when (dataType) {
+                DataType.FLOAT32 -> if (floatBuf != null && idx < floatBuf.limit()) floatBuf.get(idx) else 0f
+                DataType.INT8 -> if (idx < buffer.limit()) (buffer.get(idx).toInt() - zeroPoint) * scale else 0f
+                DataType.UINT8 -> if (idx < buffer.limit()) ((buffer.get(idx).toInt() and 0xFF) - zeroPoint) * scale else 0f
+                else -> 0f
+            }
+        }
+        val normCam = computeNormalizedGradCamGrid(
+            featureGrid = featureGrid,
+            gridH = gridH,
+            gridW = gridW,
+            channels = channels,
+            weights = gradCamWeights
+        )
+        return renderHeatmapToBitmap(normCam, gridH, gridW, riskProbability)
+    }
+
+    private fun renderHeatmapToBitmap(
+        normCam: Array<FloatArray>,
+        gridH: Int,
+        gridW: Int,
+        riskProbability: Float
+    ): Bitmap {
         val outBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
-        if (spectrogram.isRecycled || spectrogram.width <= 0 || spectrogram.height <= 0) {
-            return outBitmap
-        }
         val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
-        val srcPixels = IntArray(INPUT_SIZE * INPUT_SIZE)
-        val scaled = if (spectrogram.width == INPUT_SIZE && spectrogram.height == INPUT_SIZE) {
-            spectrogram
-        } else {
-            Bitmap.createScaledBitmap(spectrogram, INPUT_SIZE, INPUT_SIZE, true)
-        }
-        try {
-            scaled.getPixels(srcPixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
-        } finally {
-            if (scaled !== spectrogram && !scaled.isRecycled) {
-                scaled.recycle()
-            }
-        }
-
         val isHighRisk = riskProbability >= 0.5f
-        val baseAlpha = if (isHighRisk) 0.45f else 0.30f
+        val baseAlpha = if (isHighRisk) (riskProbability * 0.85f).coerceIn(0.40f, 0.85f) else 0.25f
+        val maxY = maxOf(0, gridH - 1)
+        val maxX = maxOf(0, gridW - 1)
 
         for (py in 0 until INPUT_SIZE) {
-            val normY = py.toFloat() / (INPUT_SIZE - 1).toFloat()
-            for (px in 0 until INPUT_SIZE) {
-                val p = srcPixels[py * INPUT_SIZE + px]
-                val lum = (((p shr 16) and 0xFF) * 0.30f + ((p shr 8) and 0xFF) * 0.59f + (p and 0xFF) * 0.11f) / 255.0f
+            val gy = if (maxY > 0) (py.toFloat() / (INPUT_SIZE - 1).toFloat()) * maxY else 0f
+            val y0 = gy.toInt().coerceIn(0, maxY)
+            val y1 = (y0 + 1).coerceIn(0, maxY)
+            val dy = gy - y0
 
-                val activation = if (isHighRisk) {
-                    val hfWeight = if (normY < 0.45f) 1.5f else 0.4f
-                    val temporalDiff = if (px > 0) {
-                        val pPrev = srcPixels[py * INPUT_SIZE + (px - 1)]
-                        val lumPrev = (((pPrev shr 16) and 0xFF) * 0.30f + ((pPrev shr 8) and 0xFF) * 0.59f + (pPrev and 0xFF) * 0.11f) / 255.0f
-                        Math.abs(lum - lumPrev) * 2.0f
-                    } else 0f
-                    ((lum * hfWeight) + temporalDiff).coerceIn(0f, 1f)
-                } else {
-                    val formantWeight = if (normY in 0.50f..0.90f) 1.4f else 0.3f
-                    (lum * formantWeight).coerceIn(0f, 1f)
-                }
+            for (px in 0 until INPUT_SIZE) {
+                val gx = if (maxX > 0) (px.toFloat() / (INPUT_SIZE - 1).toFloat()) * maxX else 0f
+                val x0 = gx.toInt().coerceIn(0, maxX)
+                val x1 = (x0 + 1).coerceIn(0, maxX)
+                val dx = gx - x0
+                val v00 = normCam[y0][x0]
+                val v10 = normCam[y0][x1]
+                val v01 = normCam[y1][x0]
+                val v11 = normCam[y1][x1]
+
+                val v = (1f - dx) * (1f - dy) * v00 +
+                        dx * (1f - dy) * v10 +
+                        (1f - dx) * dy * v01 +
+                        dx * dy * v11
 
                 if (isHighRisk) {
-                    val (r, g, b) = jetColorMap(activation)
-                    val alpha = ((activation * baseAlpha).coerceIn(0.02f, 0.65f) * 255).toInt()
+                    val (r, g, b) = jetColorMap(v)
+                    val alpha = ((v * baseAlpha).coerceIn(0.05f, 0.90f) * 255).toInt()
                     pixels[py * INPUT_SIZE + px] = (alpha shl 24) or (r shl 16) or (g shl 8) or b
                 } else {
-                    val r = (16 * (1f - activation) + 50 * activation).toInt().coerceIn(0, 255)
-                    val g = (185 * (1f - activation) + 210 * activation).toInt().coerceIn(0, 255)
-                    val b = (129 * (1f - activation) + 160 * activation).toInt().coerceIn(0, 255)
-                    val alpha = ((activation * baseAlpha).coerceIn(0.02f, 0.45f) * 255).toInt()
+                    val r = (16 * (1f - v) + 56 * v).toInt().coerceIn(0, 255)
+                    val g = (185 * (1f - v) + 200 * v).toInt().coerceIn(0, 255)
+                    val b = (129 * (1f - v) + 150 * v).toInt().coerceIn(0, 255)
+                    val alpha = ((v * baseAlpha).coerceIn(0.02f, 0.40f) * 255).toInt()
                     pixels[py * INPUT_SIZE + px] = (alpha shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }
@@ -382,44 +654,6 @@ class AudioClassifier(private val context: Context) {
                 null
             }
         }
-    }
-
-    private fun rgbNear(pixel: Int, r: Int, g: Int, b: Int, tol: Int = 4): Boolean {
-        val pr = (pixel shr 16) and 0xFF
-        val pg = (pixel shr 8) and 0xFF
-        val pb = pixel and 0xFF
-        return Math.abs(pr - r) <= tol && Math.abs(pg - g) <= tol && Math.abs(pb - b) <= tol
-    }
-
-    private fun inspectBitmapSignature(bitmap: Bitmap): Float? {
-        if (bitmap.isRecycled || bitmap.width != INPUT_SIZE || bitmap.height != INPUT_SIZE) return null
-        val w = bitmap.width
-        val h = bitmap.height
-        val p00 = bitmap.getPixel(0, 0)
-        val p10 = bitmap.getPixel(w - 1, 0)
-        val p01 = bitmap.getPixel(0, h - 1)
-        val p11 = bitmap.getPixel(w - 1, h - 1)
-        val pC = bitmap.getPixel(w / 2, h / 2)
-
-        val matchesReal =
-            (rgbNear(p00, 40, 122, 142) && rgbNear(p10, 49, 101, 141) && rgbNear(p01, 51, 97, 141) && rgbNear(p11, 49, 101, 141) && rgbNear(pC, 30, 160, 135)) ||
-            (rgbNear(p00, 145, 42, 128) && rgbNear(p10, 111, 30, 128) && rgbNear(p01, 103, 27, 127) && rgbNear(p11, 110, 29, 127) && rgbNear(pC, 208, 65, 110)) ||
-            (rgbNear(p00, 139, 40, 129) && rgbNear(p10, 109, 29, 128) && rgbNear(p01, 105, 28, 128) && rgbNear(p11, 149, 44, 127) && rgbNear(pC, 236, 92, 95)) ||
-            (rgbNear(p00, 103, 27, 128) && rgbNear(p10, 92, 23, 125) && rgbNear(p01, 117, 32, 129) && rgbNear(p11, 141, 41, 128) && rgbNear(pC, 198, 64, 113)) ||
-            (rgbNear(p00, 121, 34, 129) && rgbNear(p10, 106, 28, 128) && rgbNear(p01, 115, 32, 129) && rgbNear(p11, 95, 25, 122) && rgbNear(pC, 245, 107, 91)) ||
-            (rgbNear(p00, 118, 32, 129) && rgbNear(p10, 129, 37, 129) && rgbNear(p01, 147, 43, 127) && rgbNear(p11, 121, 34, 129) && rgbNear(pC, 232, 87, 97))
-        if (matchesReal) return 0.052f
-
-        val matchesFake =
-            (rgbNear(p00, 57, 85, 139) && rgbNear(p10, 52, 94, 141) && rgbNear(p01, 57, 85, 139) && rgbNear(p11, 42, 119, 142) && rgbNear(pC, 33, 140, 141)) ||
-            (rgbNear(p00, 84, 19, 124) && rgbNear(p10, 99, 25, 128) && rgbNear(p01, 85, 19, 123) && rgbNear(p11, 138, 40, 128) && rgbNear(pC, 175, 52, 122)) ||
-            (rgbNear(p00, 105, 28, 128) && rgbNear(p10, 109, 29, 128) && rgbNear(p01, 170, 50, 124) && rgbNear(p11, 111, 30, 128) && rgbNear(pC, 249, 121, 92)) ||
-            (rgbNear(p00, 126, 36, 129) && rgbNear(p10, 109, 29, 128) && rgbNear(p01, 156, 46, 126) && rgbNear(p11, 116, 32, 128) && rgbNear(pC, 136, 39, 129)) ||
-            (rgbNear(p00, 62, 15, 114) && rgbNear(p10, 93, 23, 126) && rgbNear(p01, 131, 37, 129) && rgbNear(p11, 61, 17, 108) && rgbNear(pC, 157, 46, 125)) ||
-            (rgbNear(p00, 87, 20, 125) && rgbNear(p10, 110, 30, 128) && rgbNear(p01, 127, 36, 128) && rgbNear(p11, 121, 34, 129) && rgbNear(pC, 228, 80, 99))
-        if (matchesFake) return 0.948f
-
-        return null
     }
 
     fun close() {

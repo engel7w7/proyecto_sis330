@@ -24,11 +24,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaType
 import com.detectorpreventor.app.domain.ProcessedMediaPayload
 import com.detectorpreventor.app.domain.RiskScorer
+import com.detectorpreventor.app.domain.WhatsAppAudioItem
+import com.detectorpreventor.app.domain.WhatsAppStorageAccessState
 import com.detectorpreventor.app.notifications.InterceptedNotification
 import com.detectorpreventor.app.notifications.NotificationMonitorService
 import com.detectorpreventor.app.notifications.NotificationRepository
@@ -54,7 +57,14 @@ fun DetectorScreen(
     onAnalyzeSample: (String, Int) -> Unit,
     onInspectNotification: (InterceptedNotification) -> Unit = {},
     onSimulateNotification: (MediaType, Boolean, String, String) -> Unit = { _, _, _, _ -> },
-    onDismissInspectedNotification: () -> Unit = {}
+    onDismissInspectedNotification: () -> Unit = {},
+    whatsAppAudios: List<WhatsAppAudioItem> = emptyList(),
+    whatsAppAccessState: WhatsAppStorageAccessState = WhatsAppStorageAccessState(false, false, 0, false),
+    isScanningWhatsApp: Boolean = false,
+    onRefreshWhatsAppAudios: () -> Unit = {},
+    onRequestAllFilesAccess: () -> Unit = {},
+    onPickWhatsAppFolder: () -> Unit = {},
+    onAnalyzeWhatsAppAudio: (WhatsAppAudioItem) -> Unit = {}
 ) {
     var isHeatmapEnabled by remember { mutableStateOf(true) }
 
@@ -120,7 +130,14 @@ fun DetectorScreen(
                 is ScreenNav.Upload -> UploadView(
                     payload = payload,
                     onSelectFile = onSelectFile,
-                    onNavigateToScanner = { onScreenChange(ScreenNav.Scanner) }
+                    onNavigateToScanner = { onScreenChange(ScreenNav.Scanner) },
+                    whatsAppAudios = whatsAppAudios,
+                    whatsAppAccessState = whatsAppAccessState,
+                    isScanningWhatsApp = isScanningWhatsApp,
+                    onRefreshWhatsAppAudios = onRefreshWhatsAppAudios,
+                    onRequestAllFilesAccess = onRequestAllFilesAccess,
+                    onPickWhatsAppFolder = onPickWhatsAppFolder,
+                    onAnalyzeWhatsAppAudio = onAnalyzeWhatsAppAudio
                 )
                 is ScreenNav.Notifications -> NotificationsView(
                     onInspectNotification = { notif ->
@@ -217,7 +234,7 @@ fun ScannerView(
                         .padding(horizontal = 8.dp, vertical = 5.dp)
                 ) {
                     Text(
-                        text = "INT8",
+                        text = "Edge AI",
                         color = AccentCyan,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -846,7 +863,14 @@ fun ScannerView(
 fun UploadView(
     payload: ProcessedMediaPayload?,
     onSelectFile: () -> Unit,
-    onNavigateToScanner: () -> Unit
+    onNavigateToScanner: () -> Unit,
+    whatsAppAudios: List<WhatsAppAudioItem> = emptyList(),
+    whatsAppAccessState: WhatsAppStorageAccessState = WhatsAppStorageAccessState(false, false, 0, false),
+    isScanningWhatsApp: Boolean = false,
+    onRefreshWhatsAppAudios: () -> Unit = {},
+    onRequestAllFilesAccess: () -> Unit = {},
+    onPickWhatsAppFolder: () -> Unit = {},
+    onAnalyzeWhatsAppAudio: (WhatsAppAudioItem) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -856,18 +880,18 @@ fun UploadView(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Carga Libre de Archivos",
+            text = "Carga Libre y Audios de WhatsApp",
             color = TextPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "Inspecciona audios, imágenes y videos almacenados en tu teléfono",
+            text = "Inspecciona notas de voz (.opus) de WhatsApp o archivos almacenados en tu telefono",
             color = TextSecondary,
             fontSize = 12.sp
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -880,12 +904,12 @@ fun UploadView(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(32.dp),
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(56.dp)
                         .background(PrimaryIndigo.copy(alpha = 0.15f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
@@ -893,14 +917,14 @@ fun UploadView(
                         imageVector = Icons.Default.FolderOpen,
                         contentDescription = "Upload",
                         tint = PrimaryIndigo,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Toca aquí para seleccionar un archivo",
+                    text = "Toca aqui para seleccionar un archivo",
                     color = TextPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
@@ -912,19 +936,259 @@ fun UploadView(
                     fontSize = 12.sp
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
                     onClick = onSelectFile,
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Abrir Galería / Archivos", fontSize = 12.sp, color = Color.White)
+                    Text("Abrir Galeria / Archivos", fontSize = 12.sp, color = Color.White)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        if (payload != null) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Button(
+                onClick = onNavigateToScanner,
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+            ) {
+                Text("Ver Diagnostico de '${payload.filename}'", color = Color.White, fontSize = 13.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Direct WhatsApp .opus Voice Notes & Audios Scanner
+        Card(
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, AccentCyan.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = null,
+                            tint = AccentCyan,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Audios y Notas de Voz WhatsApp (.opus)",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isScanningWhatsApp) "Escaneando almacenamiento..." else "${whatsAppAudios.size} archivos detectados",
+                                color = AccentCyan,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onRefreshWhatsAppAudios) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Actualizar audios de WhatsApp",
+                            tint = AccentCyan
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                        .padding(10.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "Ruta WhatsApp (Android 11+): Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Voice Notes",
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val accessSummary = buildString {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                append(if (whatsAppAccessState.hasAllFilesAccess) "Acceso Total: Concedido" else "Acceso Total: Requerido para omitir .nomedia")
+                            } else {
+                                append(if (whatsAppAccessState.hasAudioMediaPermission) "Permiso Audio: Concedido" else "Permiso Audio: Requerido")
+                            }
+                            append(" | Carpetas SAF: ${whatsAppAccessState.persistedTreeCount}")
+                        }
+                        Text(
+                            text = accessSummary,
+                            color = if (whatsAppAccessState.hasAllFilesAccess || whatsAppAccessState.persistedTreeCount > 0) RiskLowGreen else Color(0xFFEAB308),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !whatsAppAccessState.hasAllFilesAccess) {
+                        Button(
+                            onClick = onRequestAllFilesAccess,
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Security,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Acceso Total", fontSize = 11.sp, color = Color.White)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onPickWhatsAppFolder,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            tint = AccentCyan,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Elegir Carpeta", fontSize = 11.sp, color = AccentCyan)
+                    }
+
+                    OutlinedButton(
+                        onClick = onRefreshWhatsAppAudios,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.weight(0.8f)
+                    ) {
+                        Text("Escanear", fontSize = 11.sp, color = TextPrimary)
+                    }
+                }
+
+                if (isScanningWhatsApp) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = AccentCyan,
+                        trackColor = Color(0xFF1E293B)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (!isScanningWhatsApp && whatsAppAudios.isEmpty()) {
+                    Text(
+                        text = "No se detectaron notas de voz accesibles todavia. Pulsa 'Acceso Total' o selecciona la carpeta 'WhatsApp Voice Notes' con 'Elegir Carpeta' para listar tus archivos .opus locales.",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                } else {
+                    whatsAppAudios.forEach { item ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
+                                .clickable { onAnalyzeWhatsAppAudio(item) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .background(PrimaryIndigo.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = item.categoryLabel,
+                                                color = AccentCyan,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = item.sourceKind,
+                                            color = TextSecondary,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = item.displayName,
+                                        color = TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                    Text(
+                                        text = "${item.folderHint} | ${item.formattedDate} | ${item.formattedSize}",
+                                        color = TextSecondary,
+                                        fontSize = 10.sp,
+                                        maxLines = 1
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                Button(
+                                    onClick = { onAnalyzeWhatsAppAudio(item) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text("Analizar", fontSize = 10.sp, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         Card(
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -941,7 +1205,7 @@ fun UploadView(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Integración Directa con WhatsApp / Telegram",
+                        text = "Integracion Directa con WhatsApp / Telegram",
                         color = TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
@@ -949,24 +1213,10 @@ fun UploadView(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "También puedes analizar cualquier audio o video recibido en WhatsApp manteniendo presionado el archivo y seleccionando 'Compartir -> Detector Preventor'.",
+                    text = "Tambien puedes analizar cualquier audio o video recibido en WhatsApp manteniendo presionado el archivo y seleccionando 'Compartir -> Detector Preventor'.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
-            }
-        }
-
-        if (payload != null) {
-            Spacer(modifier = Modifier.height(20.dp))
-            Button(
-                onClick = onNavigateToScanner,
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Text("Ver Diagnóstico de '${payload.filename}'", color = Color.White, fontSize = 13.sp)
             }
         }
     }
@@ -1062,32 +1312,41 @@ fun BenchmarkView(
 
         val samples = when (selectedCategory) {
             "audio" -> listOf(
-                Pair("Muestra 1: Voz Humana Real (ASVspoof Bonafide)", "Audios .flac limpios de voz real humana. Inferencia esperada: RIESGO BAJO (4%)"),
-                Pair("Muestra 2: Clonación por IA (ASVspoof Deepfake)", "Voz clonada mediante modelo neuronal sintético. Inferencia esperada: ALTO RIESGO (96%)"),
-                Pair("Muestra 3: Síntesis de Texto a Voz (TTS AI)", "Audio generado por motor de texto a voz. Inferencia esperada: ALTO RIESGO (88%)"),
-                Pair("Muestra 4: Nota de Voz WhatsApp Replicada", "Simulación de estafa por nota de voz en WhatsApp. Inferencia esperada: ALTO RIESGO (92%)"),
-                Pair("Muestra 5: Conversación Telefónica Auténtica", "Grabación bonafide de llamada de voz. Inferencia esperada: RIESGO BAJO (8%)")
+                Pair("Muestra 1: Voz Humana Real (ASVspoof Bonafide)", "Audios limpios de voz humana real. Categoria de referencia: RIESGO BAJO (inferencia TFLite en vivo)"),
+                Pair("Muestra 2: Clonación por IA (ASVspoof Deepfake)", "Voz clonada mediante modelo neuronal sintético. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 3: Síntesis de Texto a Voz (TTS AI)", "Audio generado por motor de texto a voz. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 4: Nota de Voz WhatsApp Replicada", "Simulación de estafa por nota de voz en WhatsApp. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 5: Conversación Telefónica Auténtica", "Grabación bonafide de llamada de voz. Categoria de referencia: RIESGO BAJO (inferencia TFLite en vivo)")
             )
             "image" -> listOf(
-                Pair("Muestra 1: Retrato Real Prístino (FF++)", "Rostro real extraído de FaceForensics++. Inferencia esperada: RIESGO BAJO (2%)"),
-                Pair("Muestra 2: Manipulación FaceSwap AI", "Rostro intercambiado mediante algoritmo FaceSwap. Inferencia esperada: ALTO RIESGO (98%)"),
-                Pair("Muestra 3: Rostro Sintético GAN (CIFAKE)", "Imagen generada artificialmente por red GAN. Inferencia esperada: ALTO RIESGO (91%)"),
-                Pair("Muestra 4: Reenactamiento Face2Face", "Manipulación de gesticulación facial Face2Face. Inferencia esperada: ALTO RIESGO (89%)"),
-                Pair("Muestra 5: Fotografía HD Original", "Fotografía prístina de alta resolución. Inferencia esperada: RIESGO BAJO (5%)")
+                Pair("Muestra 1: Retrato Real Prístino (FF++)", "Rostro real extraído de FaceForensics++. Categoria de referencia: RIESGO BAJO (inferencia TFLite en vivo)"),
+                Pair("Muestra 2: Rostro Sintético Deepfake AI", "Manipulación facial detectada por red neuronal. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 3: Alteración Facial Moderada (GAN)", "Indicadores intermedios de generación sintética. Categoria de referencia: RIESGO MEDIO (inferencia TFLite en vivo)"),
+                Pair("Muestra 4: Reenactamiento Sutil (Face2Face)", "Alteración sutil en rasgos locales de expresión. Categoria de referencia: RIESGO MEDIO (inferencia TFLite en vivo)"),
+                Pair("Muestra 5: Fotografía HD Original", "Fotografía prístina de alta resolución. Categoria de referencia: RIESGO BAJO (inferencia TFLite en vivo)")
             )
             else -> listOf(
-                Pair("Muestra 1: Entrevista Real YouTube (FF++)", "Video original prístino sin alterations. Inferencia esperada: RIESGO BAJO (5%)"),
-                Pair("Muestra 2: Sincronización Labial LipSync AI", "Video con movimiento de labios alterado por IA. Inferencia esperada: ALTO RIESGO (91%)"),
-                Pair("Muestra 3: FaceSwap HD Video", "Secuencia de video con rostro sustituido. Inferencia esperada: ALTO RIESGO (95%)"),
-                Pair("Muestra 4: Avatar IA Multimodal Completo", "Video sintético con audio y rostro generados. Inferencia esperada: ALTO RIESGO (96%)"),
-                Pair("Muestra 5: Clip de Cámara Frontal Auténtico", "Video grabado directamente con cámara frontal. Inferencia esperada: RIESGO BAJO (5%)")
+                Pair("Muestra 1: Entrevista Real YouTube (FF++)", "Video original prístino sin alteraciones. Categoria de referencia: RIESGO BAJO (inferencia TFLite en vivo)"),
+                Pair("Muestra 2: Sincronización Labial LipSync AI", "Video con movimiento de labios alterado por IA. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 3: FaceSwap HD Video", "Secuencia de video con rostro sustituido. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 4: Avatar IA Multimodal Completo", "Video sintético con audio y rostro generados. Categoria de referencia: ALTO RIESGO (inferencia TFLite en vivo)"),
+                Pair("Muestra 5: Clip de Cámara Frontal Auténtico", "Video grabado directamente con cámara frontal. Categoria de referencia: RIESGO BAJO (inferencia TFLite en vivo)")
             )
         }
 
         samples.forEachIndexed { idx, item ->
             val isHighRisk = item.second.contains("ALTO RIESGO")
-            val sampleBadgeColor = if (isHighRisk) RiskHighRed else RiskLowGreen
-            val sampleBadgeText = if (isHighRisk) "AMENAZA" else "AUTÉNTICO"
+            val isMediumRisk = !isHighRisk && item.second.contains("RIESGO MEDIO")
+            val sampleBadgeColor = when {
+                isHighRisk -> RiskHighRed
+                isMediumRisk -> RiskMediumYellow
+                else -> RiskLowGreen
+            }
+            val sampleBadgeText = when {
+                isHighRisk -> "AMENAZA"
+                isMediumRisk -> "SOSPECHOSO"
+                else -> "AUTÉNTICO"
+            }
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -1232,27 +1491,27 @@ fun SystemInfoView() {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Enjambre de Modelos Expertos (Edge AI INT8)",
+                        text = "Enjambre de Modelos Expertos (Edge AI TFLite FP16 + XNNPACK)",
                         color = PrimaryIndigo,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Experto Audio: MobileNetV3-Small INT8 (6.2 MB)", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
-                Text("  Entrada: Espectrograma térmico Mel Magma RGB 224x224x3 (STFT).", fontSize = 11.sp, color = TextSecondary)
-                Text("  Dataset: ASVspoof 2019 LA (7,870 muestras de síntesis vocal Zero-Shot).", fontSize = 11.sp, color = TextSecondary)
-                Text("  Rendimiento: 81.79% Accuracy | 78.28% Precision | 99.96% Recall | 87.80% F1.", fontSize = 11.sp, color = AccentCyan)
+                Text("• Experto Audio: EfficientNetV2-B0 14x14 FP16 (11.27 MB)", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text("  Entrada: Espectrograma Mel multiescala RGB 224x224x3 (RMS-VAD + 1024/256 FFT + CMVN).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Dataset: 47,200 clips train / 29,741 externos (ASVspoof19/21/5, BRSpeech, Opus, Unseen).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Rendimiento: 84.17% Acc | 95.95% Prec | 75.69% RecFake | 95.68% SpecReal | 0.9197 AUC.", fontSize = 11.sp, color = AccentCyan)
 
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Experto Visión: EfficientNet-B0 INT8 (16.0 MB)", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
-                Text("  Entrada: Keyframe facial centrado con margen pericial del 15% (224x224x3).", fontSize = 11.sp, color = TextSecondary)
-                Text("  Dataset: CIFAKE y FaceForensics++ (22,086 fotogramas con Data Augmentation).", fontSize = 11.sp, color = TextSecondary)
-                Text("  Rendimiento: 97.17% Accuracy | 95.40% Precision | 96.25% Recall | 95.82% F1.", fontSize = 11.sp, color = AccentCyan)
+                Text("• Experto Visión: EfficientNet-B0 FP16 (7.74 MB)", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Text("  Entrada: Keyframe facial BlazeFace con margen pericial del 15% (224x224x3).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Dataset: 30,750 muestras externas (StyleGAN 140k, SDXL vs FFHQ, FaceForensics++).", fontSize = 11.sp, color = TextSecondary)
+                Text("  Rendimiento: 97.66% Acc | 97.55% Prec | 97.76% Recall | 97.66% F1 | 0.9934 AUC.", fontSize = 11.sp, color = AccentCyan)
 
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Orquestador de Video: BlazeFace + Extracción STFT paralela.", fontSize = 11.sp, color = TextSecondary)
-                Text("• Capa XAI: Grad-CAM dinámico cargado desde gradcam_weights.bin (1280 canales).", fontSize = 11.sp, color = TextSecondary)
+                Text("• Orquestador Multimodal: BlazeFace + Extracción Mel paralela (Fusión 97.47% Acc / 0.9953 AUC).", fontSize = 11.sp, color = TextSecondary)
+                Text("• Capa XAI: Grad-CAM 2D desde audio_gradcam_weights.bin (14x14x576) y gradcam_weights.bin (1280).", fontSize = 11.sp, color = TextSecondary)
             }
         }
 
@@ -1312,9 +1571,9 @@ fun SystemInfoView() {
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Consumo de Memoria RAM: ~145 MB (límite estricto < 200 MB cumplido)", fontSize = 11.sp, color = TextPrimary)
-                Text("• Tiempo de Inferencia: 3.2 segundos promedio (requisito < 5.0 s cumplido)", fontSize = 11.sp, color = TextPrimary)
-                Text("• Uso de CPU: < 35% con motor TFLite CPU estable (4 hilos CPU, sin XNNPACK)", fontSize = 11.sp, color = TextPrimary)
+                Text("• Delta de Memoria RAM TFLite + XNNPACK: +103.4 MB (pico proceso medido 470.2 MB)", fontSize = 11.sp, color = TextPrimary)
+                Text("• Latencia Media TFLite CPU (XNNPACK 4 hilos): Audio 1.8 ms | Visión 7.5 ms | Par 9.3 ms", fontSize = 11.sp, color = TextPrimary)
+                Text("• Uso de CPU Medido: 1.45% promedio / 8.68% pico con delegado XNNPACK estable (4 hilos)", fontSize = 11.sp, color = TextPrimary)
                 Text("• Impacto Energético: Ligero / Medio, previniendo sobrecalentamiento", fontSize = 11.sp, color = TextPrimary)
                 Text("• Privacidad por Diseño: Procesamiento 100% local sin servidores externos (ISO/IEC 27400 y NIST)", fontSize = 11.sp, color = TextPrimary)
             }
@@ -1753,7 +2012,7 @@ fun NotificationsView(
                     TextButton(
                         onClick = {
                             NotificationRepository.autoResolvePendingNotifications(context)
-                            Toast.makeText(context, "Descargas resueltas con inferencia TFLite", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Resolviendo descargas con Edge AI TFLite...", Toast.LENGTH_SHORT).show()
                         }
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(14.dp))
@@ -1984,7 +2243,7 @@ fun NotificationsView(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "ESPECTROGRAMA STFT (VOZ)",
+                                        text = "AUDIO PCM (VOZ)",
                                         color = Color(0xFFC4B5FD),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold

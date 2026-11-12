@@ -48,6 +48,7 @@ android {
     androidResources {
         noCompress += "tflite"
         noCompress += "pt"
+        noCompress += "bin"
     }
 
     testOptions {

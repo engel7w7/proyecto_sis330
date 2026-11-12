@@ -4,10 +4,22 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.provider.Settings
 import com.detectorpreventor.app.domain.FusionResult
 import com.detectorpreventor.app.domain.MediaType
 import com.detectorpreventor.app.domain.RiskLevel
+import com.detectorpreventor.app.domain.RiskScorer
+import com.detectorpreventor.app.ml.AudioClassifier
+import com.detectorpreventor.app.ml.AudioSpectrogramGenerator
+import com.detectorpreventor.app.ml.TfliteExecutionLock
+import com.detectorpreventor.app.ml.VisionClassifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +30,8 @@ import java.util.Collections
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class InterceptedNotification(
     val id: String,
@@ -128,6 +142,8 @@ object NotificationRepository {
 
     private var prefs: SharedPreferences? = null
     private val repoLock = Any()
+    private val pendingResolveExecutor = Executors.newSingleThreadExecutor()
+    private val isResolvingPending = AtomicBoolean(false)
 
     private val _notifications = MutableStateFlow<List<InterceptedNotification>>(emptyList())
     val notifications: StateFlow<List<InterceptedNotification>> = _notifications.asStateFlow()
@@ -365,246 +381,509 @@ object NotificationRepository {
     }
 
     fun autoResolvePendingNotifications(context: Context) {
-        val pendingItems = synchronized(repoLock) {
+        val pendingItemsSnapshot = synchronized(repoLock) {
             _notifications.value.filter { it.isPendingDownload() }
         }
-        if (pendingItems.isEmpty()) return
+        if (pendingItemsSnapshot.isEmpty()) return
+        if (!isResolvingPending.compareAndSet(false, true)) return
 
-        val resolvedMap = HashMap<String, InterceptedNotification>(pendingItems.size)
-        for (item in pendingItems) {
-            resolvedMap[item.id] = resolveSinglePendingNotification(context, item)
-        }
-
-        synchronized(repoLock) {
-            val currentList = _notifications.value.toMutableList()
-            var hasChanges = false
-            for (i in currentList.indices) {
-                val resolved = resolvedMap[currentList[i].id]
-                if (resolved != null && currentList[i].isPendingDownload()) {
-                    currentList[i] = resolved
-                    hasChanges = true
+        val app = context.applicationContext
+        pendingResolveExecutor.execute {
+            var audioClassifier: AudioClassifier? = null
+            var visionClassifier: VisionClassifier? = null
+            try {
+                val pendingItems = synchronized(repoLock) {
+                    _notifications.value.filter { it.isPendingDownload() }
                 }
-            }
-            if (hasChanges) {
-                _notifications.value = currentList
-                persistToStorageLocked(currentList)
+                if (pendingItems.isEmpty()) return@execute
+
+                val needsAudio = pendingItems.any { it.mediaType == MediaType.AUDIO_ONLY || it.mediaType == MediaType.VIDEO_MULTIMODAL }
+                val needsVision = pendingItems.any { it.mediaType == MediaType.IMAGE_ONLY || it.mediaType == MediaType.VIDEO_MULTIMODAL }
+                if (needsAudio) {
+                    audioClassifier = AudioClassifier(app)
+                }
+                if (needsVision) {
+                    visionClassifier = VisionClassifier(app)
+                }
+
+                val resolvedMap = HashMap<String, InterceptedNotification>(pendingItems.size)
+                for (item in pendingItems) {
+                    resolvedMap[item.id] = resolveSinglePendingNotification(app, item, audioClassifier, visionClassifier)
+                }
+
+                synchronized(repoLock) {
+                    val currentList = _notifications.value.toMutableList()
+                    var hasChanges = false
+                    for (i in currentList.indices) {
+                        val resolved = resolvedMap[currentList[i].id]
+                        if (resolved != null && currentList[i].isPendingDownload()) {
+                            currentList[i] = resolved
+                            hasChanges = true
+                        }
+                    }
+                    if (hasChanges) {
+                        _notifications.value = currentList
+                        persistToStorageLocked(currentList)
+                    }
+                }
+            } catch (_: Throwable) {
+            } finally {
+                try { audioClassifier?.close() } catch (_: Throwable) {}
+                try { visionClassifier?.close() } catch (_: Throwable) {}
+                isResolvingPending.set(false)
             }
         }
     }
 
-    fun resolveSinglePendingNotification(context: Context, pending: InterceptedNotification): InterceptedNotification {
-        val senderLower = pending.sender.lowercase()
-        val textLower = pending.text.lowercase()
+    @JvmOverloads
+    fun resolveSinglePendingNotification(
+        context: Context,
+        pending: InterceptedNotification,
+        sharedAudioClassifier: AudioClassifier? = null,
+        sharedVisionClassifier: VisionClassifier? = null
+    ): InterceptedNotification {
+        val app = context.applicationContext
+        val isBlocked = isSenderBlocked(pending.sender)
+        val uriStr = pending.mediaUriString ?: NotificationMediaCache.getMediaUriString(pending.id)
+        val cleanOriginal = pending.text
+            .replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "")
+            .trim()
 
-        val isThreat = senderLower.contains("urgente") ||
-                senderLower.contains("mamá") ||
-                senderLower.contains("mama") ||
-                senderLower.contains("desconocido") ||
-                senderLower.contains("+") ||
-                senderLower.contains("banco") ||
-                textLower.contains("urgente") ||
-                textLower.contains("depósito") ||
-                textLower.contains("deposito") ||
-                textLower.contains("tarjeta") ||
-                textLower.contains("dinero") ||
-                textLower.contains("comprometedor") ||
-                textLower.contains("alerta") ||
-                textLower.contains("sospechoso") ||
-                textLower.contains("clonaci") ||
-                textLower.contains("deepfake") ||
-                textLower.contains("faceswap") ||
-                pending.isThreat
-
-        return when (pending.mediaType) {
-            MediaType.AUDIO_ONLY -> {
-                val asset = if (isThreat) "samples/06_clonacion_ia_spoof_tts_1_spec.png" else "samples/01_voz_humana_real_bonafide_1_spec.png"
-                val uriStr = pending.mediaUriString ?: "asset://$asset"
-                val risk = if (isThreat) 94.5f else 4.2f
-                val statusText = if (isThreat) {
-                    "Nota de voz analizada (Alerta: Posible clonación sintética por IA)"
+        if (pending.mediaType == MediaType.UNKNOWN) {
+            val risk = if (isBlocked) maxOf(pending.riskScore, 85.0f) else pending.riskScore
+            return pending.copy(
+                text = if (isBlocked && !cleanOriginal.startsWith("[REMITENTE BLOQUEADO]")) {
+                    "[REMITENTE BLOQUEADO] ${cleanOriginal.ifBlank { "Mensaje analizado" }}"
                 } else {
-                    "Nota de voz analizada (Voz humana auténtica)"
-                }
-                val cleanOriginal = pending.text.replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "").trim()
-                val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Nota de voz")) {
-                    "$cleanOriginal | $statusText"
-                } else {
-                    statusText
-                }
+                    cleanOriginal.ifBlank { "Mensaje analizado" }
+                },
+                riskScore = risk,
+                isThreat = isBlocked || risk >= 70.0f
+            )
+        }
 
-                val fusion = FusionResult(
-                    globalRiskPercentage = risk,
-                    audioFraudProb = if (isThreat) 0.945f else 0.042f,
-                    visionFraudProb = 0.0f,
-                    riskLevel = if (isThreat) RiskLevel.ALTO else RiskLevel.BAJO,
-                    weightAudio = 1.0f,
-                    weightVision = 0.0f,
-                    diagnosticSummary = if (isThreat) {
-                        "Patrón espectral acústico anómalo detectado por MobileNetV3-Small INT8. Probable síntesis neuronal de voz."
-                    } else {
-                        "Frecuencias formantes y transiciones vocales naturales consistentes con biometría humana real."
+        var localAudio: AudioClassifier? = null
+        var localVision: VisionClassifier? = null
+        try {
+            when (pending.mediaType) {
+                MediaType.AUDIO_ONLY -> {
+                    val cachedAudio = NotificationMediaCache.getAudioBitmap(app, pending.id)
+                    val cachedPcm = NotificationMediaCache.getAudioPcm(pending.id)
+                    var specBitmap: Bitmap? = cachedAudio
+                    var audioPcm: FloatArray? = cachedPcm
+                    if (uriStr != null && (specBitmap == null || audioPcm == null)) {
+                        when {
+                            uriStr.startsWith("asset://") -> {
+                                val assetRef = uriStr.removePrefix("asset://")
+                                if (audioPcm == null) {
+                                    audioPcm = decodeAssetWavPcm48k(app, wavAssetFromSampleSpec(assetRef))
+                                }
+                                if (specBitmap == null) {
+                                    specBitmap = decodeAssetBitmap(app, specAssetFromAudioAsset(assetRef))
+                                        ?: audioPcm?.let { AudioSpectrogramGenerator.analyzePcm(it).spectrogramBitmap }
+                                }
+                            }
+                            uriStr.startsWith("file://") || uriStr.startsWith("content://") -> {
+                                val parsed = Uri.parse(uriStr)
+                                if (uriStr.endsWith(".png", true) || uriStr.endsWith(".jpg", true)) {
+                                    if (specBitmap == null) {
+                                        specBitmap = TfliteExecutionLock.decodeSampledBitmapFromUri(app, parsed, 1024)
+                                    }
+                                } else {
+                                    val audioRes = AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(app, parsed)
+                                    if (specBitmap == null) specBitmap = audioRes?.spectrogramBitmap
+                                    if (audioPcm == null) audioPcm = audioRes?.pcm48k
+                                }
+                            }
+                        }
                     }
-                )
 
-                NotificationMediaCache.storeMedia(
-                    context = context,
-                    notifId = pending.id,
-                    assetName = asset,
-                    mediaUriString = uriStr
-                )
+                    if (audioPcm == null && specBitmap == null) {
+                        return buildUnresolvedLocalFallback(pending, isBlocked)
+                    }
 
-                pending.copy(
-                    text = displayText,
-                    riskScore = risk,
-                    isThreat = isThreat,
-                    fusionResult = fusion,
-                    mediaUriString = uriStr
-                )
-            }
-            MediaType.IMAGE_ONLY -> {
-                val isFaceDiscardCase = textLower.contains("sin rostro") ||
-                        textLower.contains("descarte") ||
-                        textLower.contains("paisaje") ||
-                        textLower.contains("sin personas") ||
-                        pending.fusionResult?.wasFaceDiscarded == true
+                    val audioCls = sharedAudioClassifier ?: AudioClassifier(app).also { localAudio = it }
+                    val audioProb = if (audioPcm != null) {
+                        audioCls.classifyPcm(audioPcm, null)
+                    } else {
+                        audioCls.classifySpectrogram(specBitmap!!, null)
+                    }
+                    val baseFusion = RiskScorer.calculateGlobalRisk(
+                        audioProb = audioProb,
+                        visionProb = null,
+                        isFaceDetected = true
+                    )
+                    val finalRisk = if (isBlocked) maxOf(baseFusion.globalRiskPercentage, 85.0f) else baseFusion.globalRiskPercentage
+                    val finalLevel = if (isBlocked) RiskLevel.ALTO else baseFusion.riskLevel
+                    val finalThreat = isBlocked || finalRisk >= 70.0f
+                    val finalSummary = if (isBlocked) "[REMITENTE BLOQUEADO] ${baseFusion.diagnosticSummary}" else baseFusion.diagnosticSummary
+                    val finalFusion = baseFusion.copy(
+                        globalRiskPercentage = finalRisk,
+                        riskLevel = finalLevel,
+                        diagnosticSummary = finalSummary
+                    )
 
-                if (isFaceDiscardCase) {
-                    val asset = "samples/01_retrato_humano_real_1.jpg"
-                    val uriStr = pending.mediaUriString ?: "asset://$asset"
-                    val risk = 0.0f
-                    val statusText = "Fotografía analizada (BlazeFace: Descarte automático por ausencia de rostro humano)"
-                    val cleanOriginal = pending.text.replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "").trim()
+                    val statusText = when {
+                        finalRisk >= 70.0f -> "Nota de voz analizada (Alerta: Posible clonación sintética por IA)"
+                        finalRisk >= 30.0f -> "Nota de voz analizada (Revisión sugerida: anomalía espectral moderada)"
+                        else -> "Nota de voz analizada (Voz humana auténtica)"
+                    }
+                    val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Nota de voz")) {
+                        "$cleanOriginal | $statusText"
+                    } else {
+                        statusText
+                    }
+
+                    NotificationMediaCache.storeMedia(
+                        context = app,
+                        notifId = pending.id,
+                        audioBitmap = specBitmap,
+                        mediaUriString = uriStr,
+                        audioPcm = audioPcm
+                    )
+
+                    return pending.copy(
+                        text = displayText,
+                        riskScore = finalRisk,
+                        isThreat = finalThreat,
+                        fusionResult = finalFusion,
+                        mediaUriString = uriStr
+                    )
+                }
+
+                MediaType.IMAGE_ONLY -> {
+                    val cachedFace = NotificationMediaCache.getFaceBitmap(app, pending.id)
+                    val rawBitmap = uriStr?.let { s ->
+                        when {
+                            s.startsWith("synthetic://") -> createNonFaceLandscapeBitmap()
+                            s.startsWith("asset://") -> decodeAssetBitmap(app, s.removePrefix("asset://"))
+                            s.startsWith("file://") || s.startsWith("content://") -> {
+                                TfliteExecutionLock.decodeSampledBitmapFromUri(app, Uri.parse(s), 1024)
+                            }
+                            else -> null
+                        }
+                    } ?: cachedFace
+
+                    if (rawBitmap == null) {
+                        return buildUnresolvedLocalFallback(pending, isBlocked)
+                    }
+
+                    val visionCls = sharedVisionClassifier ?: VisionClassifier(app).also { localVision = it }
+                    val reuseAlreadyCropped = (cachedFace != null && rawBitmap === cachedFace && pending.fusionResult != null && !pending.isFaceDiscarded())
+                    val (croppedFace, faceOk) = if (reuseAlreadyCropped) {
+                        Pair(rawBitmap, true)
+                    } else {
+                        visionCls.detectAndCropFace(rawBitmap)
+                    }
+
+                    if (!faceOk) {
+                        val discardFusion = RiskScorer.calculateGlobalRisk(
+                            audioProb = null,
+                            visionProb = 0.0f,
+                            isFaceDetected = false
+                        )
+                        val statusText = "Fotografía analizada (BlazeFace: Descarte automático por ausencia de rostro humano)"
+                        val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Fotografía")) {
+                            "$cleanOriginal | $statusText"
+                        } else {
+                            statusText
+                        }
+
+                        NotificationMediaCache.storeMedia(
+                            context = app,
+                            notifId = pending.id,
+                            faceBitmap = croppedFace,
+                            mediaUriString = uriStr
+                        )
+
+                        return pending.copy(
+                            text = displayText,
+                            riskScore = 0.0f,
+                            isThreat = false,
+                            fusionResult = discardFusion,
+                            mediaUriString = uriStr
+                        )
+                    }
+
+                    val visionProb = visionCls.classifyFaceKeyframe(croppedFace, null, requireFaceDetection = false)
+                    val visionSharp = VisionClassifier.computeLaplacianSharpness(croppedFace)
+                    val baseFusion = RiskScorer.calculateGlobalRisk(
+                        audioProb = null,
+                        visionProb = visionProb,
+                        isFaceDetected = true,
+                        visionSharpness = visionSharp
+                    )
+                    val finalRisk = if (isBlocked) maxOf(baseFusion.globalRiskPercentage, 85.0f) else baseFusion.globalRiskPercentage
+                    val finalLevel = if (isBlocked) RiskLevel.ALTO else baseFusion.riskLevel
+                    val finalThreat = isBlocked || finalRisk >= 70.0f
+                    val finalSummary = if (isBlocked) "[REMITENTE BLOQUEADO] ${baseFusion.diagnosticSummary}" else baseFusion.diagnosticSummary
+                    val finalFusion = baseFusion.copy(
+                        globalRiskPercentage = finalRisk,
+                        riskLevel = finalLevel,
+                        diagnosticSummary = finalSummary
+                    )
+
+                    val statusText = when {
+                        finalRisk >= 70.0f -> "Fotografía analizada (Alerta: Posible manipulación facial por IA)"
+                        finalRisk >= 30.0f -> "Fotografía analizada (Revisión sugerida: anomalía facial moderada)"
+                        else -> "Fotografía analizada (Rostro humano auténtico)"
+                    }
                     val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Fotografía")) {
                         "$cleanOriginal | $statusText"
                     } else {
                         statusText
                     }
 
-                    val fusion = FusionResult(
-                        globalRiskPercentage = 0.0f,
-                        audioFraudProb = 0.0f,
-                        visionFraudProb = 0.0f,
-                        riskLevel = RiskLevel.BAJO,
-                        weightAudio = 0.0f,
-                        weightVision = 1.0f,
-                        diagnosticSummary = "• Descarte Automático por Ausencia Facial: BlazeFace Edge AI analizó la imagen y verificó que no contiene fisonomía facial humana.\n• La muestra se clasifica como SEGURA / SIN RIESGO (0.0%).",
-                        wasFaceDiscarded = true
+                    NotificationMediaCache.storeMedia(
+                        context = app,
+                        notifId = pending.id,
+                        faceBitmap = croppedFace,
+                        mediaUriString = uriStr
                     )
+
+                    return pending.copy(
+                        text = displayText,
+                        riskScore = finalRisk,
+                        isThreat = finalThreat,
+                        fusionResult = finalFusion,
+                        mediaUriString = uriStr
+                    )
+                }
+
+                MediaType.VIDEO_MULTIMODAL -> {
+                    val cachedFace = NotificationMediaCache.getFaceBitmap(app, pending.id)
+                    val cachedAudio = NotificationMediaCache.getAudioBitmap(app, pending.id)
+                    val cachedPcm = NotificationMediaCache.getAudioPcm(pending.id)
+                    val visionCls = sharedVisionClassifier ?: VisionClassifier(app).also { localVision = it }
+                    val audioCls = sharedAudioClassifier ?: AudioClassifier(app).also { localAudio = it }
+
+                    val isRealVideoUri = uriStr != null &&
+                        (uriStr.startsWith("file://") || uriStr.startsWith("content://")) &&
+                        !uriStr.endsWith(".jpg", true) &&
+                        !uriStr.endsWith(".png", true)
+
+                    val frameCrops = mutableListOf<Bitmap>()
+                    val frameQualities = mutableListOf<Float>()
+                    var faceOk = false
+                    var audioSpec: Bitmap? = cachedAudio
+                    var audioPcm: FloatArray? = cachedPcm
+                    var audioConf = 1.0f
+
+                    if (isRealVideoUri) {
+                        val parsed = Uri.parse(uriStr)
+                        val extRes = visionCls.extractBestFiveVideoKeyframes(parsed, forceTightCrop = true, maxFrames = 5)
+                        frameCrops.addAll(extRes.crops)
+                        frameQualities.addAll(extRes.qualities)
+                        faceOk = extRes.hasFace
+                        if (audioSpec == null || audioPcm == null) {
+                            val audioRes = AudioSpectrogramGenerator.generateSpectrogramIfAudioPresent(app, parsed)
+                            if (audioSpec == null) audioSpec = audioRes?.spectrogramBitmap
+                            if (audioPcm == null) audioPcm = audioRes?.pcmFull16k ?: audioRes?.pcm48k
+                            if (audioRes != null) audioConf = audioRes.audioConfidence
+                        }
+                    } else if (uriStr != null && uriStr.startsWith("asset://")) {
+                        val assetBmp = decodeAssetBitmap(app, uriStr.removePrefix("asset://"))
+                        if (assetBmp != null) {
+                            val (crop, ok) = visionCls.detectAndCropFace(assetBmp)
+                            faceOk = ok
+                            frameCrops.add(crop)
+                            if (ok) frameQualities.add(VisionClassifier.computeLaplacianSharpness(crop))
+                        }
+                        if (audioSpec == null) {
+                            val pairedSpec = if (uriStr.contains("06_deepfake")) {
+                                "samples/06_clonacion_ia_spoof_tts_1_spec.png"
+                            } else {
+                                "samples/01_voz_humana_real_bonafide_1_spec.png"
+                            }
+                            audioSpec = decodeAssetBitmap(app, pairedSpec)
+                        }
+                        if (audioPcm == null) {
+                            val pairedWav = if (uriStr.contains("06_deepfake")) {
+                                "samples/06_clonacion_ia_spoof_tts_1.wav"
+                            } else {
+                                "samples/01_voz_humana_real_bonafide_1.wav"
+                            }
+                            audioPcm = decodeAssetWavPcm48k(app, pairedWav)
+                        }
+                    } else if (cachedFace != null || cachedAudio != null || cachedPcm != null) {
+                        if (cachedFace != null) {
+                            faceOk = !pending.isFaceDiscarded()
+                            frameCrops.add(cachedFace)
+                            if (faceOk) frameQualities.add(VisionClassifier.computeLaplacianSharpness(cachedFace))
+                        }
+                    } else {
+                        return buildUnresolvedLocalFallback(pending, isBlocked)
+                    }
+
+                    if (frameCrops.isEmpty() && audioPcm == null && audioSpec == null) {
+                        return buildUnresolvedLocalFallback(pending, isBlocked)
+                    }
+
+                    val frameProbs = if (faceOk && frameCrops.isNotEmpty()) {
+                        frameCrops.map { frame ->
+                            visionCls.classifyFaceKeyframe(frame, null, requireFaceDetection = false)
+                        }
+                    } else {
+                        emptyList()
+                    }
+                    val audioProb = when {
+                        audioPcm != null -> {
+                            audioConf = AudioSpectrogramGenerator.estimateAudioConfidence(audioPcm)
+                            audioCls.classifyPcm(audioPcm, null)
+                        }
+                        audioSpec != null -> audioCls.classifySpectrogram(audioSpec, null)
+                        else -> null
+                    }
+
+                    val baseFusion = RiskScorer.calculateVideoRisk(
+                        audioProb = audioProb,
+                        frameProbs = frameProbs,
+                        isFaceDetected = faceOk,
+                        frameQualities = frameQualities,
+                        audioConfidence = audioConf
+                    )
+                    val finalRisk = if (isBlocked) maxOf(baseFusion.globalRiskPercentage, 85.0f) else baseFusion.globalRiskPercentage
+                    val finalLevel = if (isBlocked) RiskLevel.ALTO else baseFusion.riskLevel
+                    val finalThreat = isBlocked || finalRisk >= 70.0f
+                    val finalSummary = if (isBlocked) "[REMITENTE BLOQUEADO] ${baseFusion.diagnosticSummary}" else baseFusion.diagnosticSummary
+                    val finalFusion = baseFusion.copy(
+                        globalRiskPercentage = finalRisk,
+                        riskLevel = finalLevel,
+                        diagnosticSummary = finalSummary
+                    )
+
+                    val statusText = when {
+                        finalRisk >= 70.0f -> "Video analizado (Alerta: Inconsistencia multimodal detectada)"
+                        finalRisk >= 30.0f -> "Video analizado (Revisión sugerida: anomalía multimodal moderada)"
+                        else -> "Video analizado (Contenido audiovisual auténtico)"
+                    }
+                    val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Video")) {
+                        "$cleanOriginal | $statusText"
+                    } else {
+                        statusText
+                    }
 
                     NotificationMediaCache.storeMedia(
-                        context = context,
+                        context = app,
                         notifId = pending.id,
-                        assetName = asset,
-                        mediaUriString = uriStr
+                        faceBitmap = frameCrops.firstOrNull(),
+                        audioBitmap = audioSpec,
+                        mediaUriString = uriStr,
+                        audioPcm = audioPcm
                     )
 
-                    pending.copy(
+                    return pending.copy(
                         text = displayText,
-                        riskScore = risk,
-                        isThreat = false,
-                        fusionResult = fusion,
+                        riskScore = finalRisk,
+                        isThreat = finalThreat,
+                        fusionResult = finalFusion,
                         mediaUriString = uriStr
                     )
-                } else {
-                    val asset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
-                val uriStr = pending.mediaUriString ?: "asset://$asset"
-                val risk = if (isThreat) 93.8f else 3.5f
-                val statusText = if (isThreat) {
-                    "Fotografía analizada (Alerta: Posible FaceSwap / Deepfake detectado)"
-                } else {
-                    "Fotografía analizada (Rostro humano auténtico)"
-                }
-                val cleanOriginal = pending.text.replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "").trim()
-                val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Fotografía")) {
-                    "$cleanOriginal | $statusText"
-                } else {
-                    statusText
                 }
 
-                val fusion = FusionResult(
-                    globalRiskPercentage = risk,
-                    audioFraudProb = 0.0f,
-                    visionFraudProb = if (isThreat) 0.938f else 0.035f,
-                    riskLevel = if (isThreat) RiskLevel.ALTO else RiskLevel.BAJO,
-                    weightAudio = 0.0f,
-                    weightVision = 1.0f,
-                    diagnosticSummary = if (isThreat) {
-                        "Artefactos de mezcla facial e incoherencia de bordes detectados por EfficientNet-B0 INT8."
-                    } else {
-                        "Textura biometría epidérmica e iluminación homogénea natural sin indicios de manipulación sintética."
-                    }
-                )
-
-                NotificationMediaCache.storeMedia(
-                    context = context,
-                    notifId = pending.id,
-                    assetName = asset,
-                    mediaUriString = uriStr
-                )
-
-                pending.copy(
-                    text = displayText,
-                    riskScore = risk,
-                    isThreat = isThreat,
-                    fusionResult = fusion,
-                    mediaUriString = uriStr
-                )
-                }
+                MediaType.UNKNOWN -> return pending
             }
-            MediaType.VIDEO_MULTIMODAL -> {
-                val faceAsset = if (isThreat) "samples/06_deepfake_rostro_ia_1.jpg" else "samples/01_retrato_humano_real_1.jpg"
-                val uriStr = pending.mediaUriString ?: "asset://$faceAsset"
-                val risk = if (isThreat) 94.2f else 3.8f
-                val statusText = if (isThreat) {
-                    "Video analizado (Alerta: Incoherencia multimodal audiovisual detectada)"
-                } else {
-                    "Video analizado (Contenido audiovisual auténtico)"
-                }
-                val cleanOriginal = pending.text.replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "").trim()
-                val displayText = if (cleanOriginal.isNotBlank() && !cleanOriginal.startsWith("Video")) {
-                    "$cleanOriginal | $statusText"
-                } else {
-                    statusText
-                }
-
-                val fusion = FusionResult(
-                    globalRiskPercentage = risk,
-                    audioFraudProb = if (isThreat) 0.945f else 0.042f,
-                    visionFraudProb = if (isThreat) 0.938f else 0.035f,
-                    riskLevel = if (isThreat) RiskLevel.ALTO else RiskLevel.BAJO,
-                    weightAudio = 0.55f,
-                    weightVision = 0.45f,
-                    diagnosticSummary = if (isThreat) {
-                        "Fusión Multimodal (55% Audio / 45% Visión) alertó sobre inconsistencia en sincronía y síntesis facial."
-                    } else {
-                        "Verificación conjunta de audio y fotogramas de video superada con éxito (Sin manipulación detectada)."
-                    }
-                )
-
-                NotificationMediaCache.storeMedia(
-                    context = context,
-                    notifId = pending.id,
-                    assetName = faceAsset,
-                    mediaUriString = uriStr
-                )
-
-                pending.copy(
-                    text = displayText,
-                    riskScore = risk,
-                    isThreat = isThreat,
-                    fusionResult = fusion,
-                    mediaUriString = uriStr
-                )
-            }
-            else -> {
-                val cleanOriginal = pending.text.replace(Regex("""(?i)\s*\((?:descarga|descargando|pendiente)[^)]*\)"""), "").trim()
-                pending.copy(
-                    text = cleanOriginal.ifBlank { "Mensaje analizado" },
-                    riskScore = if (isThreat) 85.0f else 5.0f,
-                    isThreat = isThreat
-                )
-            }
+        } finally {
+            try { localAudio?.close() } catch (_: Throwable) {}
+            try { localVision?.close() } catch (_: Throwable) {}
         }
+    }
+
+    private fun buildUnresolvedLocalFallback(
+        pending: InterceptedNotification,
+        isBlocked: Boolean
+    ): InterceptedNotification {
+        val risk = if (isBlocked) 85.0f else 0.0f
+        val fusion = FusionResult(
+            globalRiskPercentage = risk,
+            audioFraudProb = 0.0f,
+            visionFraudProb = 0.0f,
+            riskLevel = if (isBlocked) RiskLevel.ALTO else RiskLevel.BAJO,
+            weightAudio = if (pending.mediaType == MediaType.AUDIO_ONLY) 1.0f else if (pending.mediaType == MediaType.VIDEO_MULTIMODAL) 0.55f else 0.0f,
+            weightVision = if (pending.mediaType == MediaType.IMAGE_ONLY) 1.0f else if (pending.mediaType == MediaType.VIDEO_MULTIMODAL) 0.45f else 0.0f,
+            diagnosticSummary = "Archivo multimedia no localizado en almacenamiento local (habilita Acceso Total o descarga manual para analizar)."
+        )
+        val baseText = "Archivo pendiente sin acceso local"
+        return pending.copy(
+            text = if (isBlocked) "[REMITENTE BLOQUEADO] $baseText" else baseText,
+            riskScore = risk,
+            isThreat = isBlocked,
+            fusionResult = fusion
+        )
+    }
+
+    private fun decodeAssetBitmap(context: Context, assetPath: String): Bitmap? {
+        return try {
+            context.assets.open(assetPath).use { stream ->
+                BitmapFactory.decodeStream(stream)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun decodeAssetWavPcm48k(context: Context, assetPath: String): FloatArray? {
+        return try {
+            context.assets.open(assetPath).use { stream ->
+                AudioSpectrogramGenerator.buildPcm48kFromWavBytes(stream.readBytes())
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun wavAssetFromSampleSpec(assetPath: String): String {
+        return when {
+            assetPath.endsWith(".wav", ignoreCase = true) -> assetPath
+            assetPath == "samples/audio_real_spec.png" -> "samples/01_voz_humana_real_bonafide_1.wav"
+            assetPath == "samples/audio_fake_spec.png" -> "samples/06_clonacion_ia_spoof_tts_1.wav"
+            assetPath.endsWith("_spec.png") -> assetPath.removeSuffix("_spec.png") + ".wav"
+            else -> "samples/01_voz_humana_real_bonafide_1.wav"
+        }
+    }
+
+    private fun specAssetFromAudioAsset(assetPath: String): String {
+        return if (assetPath.endsWith(".wav", ignoreCase = true)) {
+            assetPath.removeSuffix(".wav") + "_spec.png"
+        } else {
+            assetPath
+        }
+    }
+
+    private fun createNonFaceLandscapeBitmap(): Bitmap {
+        val bitmap = Bitmap.createBitmap(224, 224, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint()
+        canvas.drawColor(Color.rgb(12, 74, 110))
+        paint.color = Color.rgb(3, 105, 161)
+        canvas.drawRect(0f, 70f, 224f, 140f, paint)
+        val mountainPath = Path().apply {
+            moveTo(0f, 175f)
+            lineTo(55f, 95f)
+            lineTo(118f, 155f)
+            lineTo(175f, 88f)
+            lineTo(224f, 175f)
+            close()
+        }
+        paint.color = Color.rgb(30, 41, 59)
+        canvas.drawPath(mountainPath, paint)
+        paint.color = Color.rgb(20, 83, 45)
+        canvas.drawRect(0f, 175f, 224f, 224f, paint)
+        return bitmap
+    }
+
+    private fun extractVideoFaceKeyframes(
+        context: Context,
+        uri: Uri,
+        visionClassifier: VisionClassifier,
+        maxFrames: Int = 5
+    ): Pair<List<Bitmap>, Boolean> {
+        val extRes = visionClassifier.extractBestFiveVideoKeyframes(
+            uri = uri,
+            forceTightCrop = true,
+            maxFrames = maxFrames
+        )
+        return Pair(extRes.crops, extRes.hasFace)
     }
 
     fun clearNotifications() {
@@ -646,6 +925,7 @@ object NotificationRepository {
 object NotificationMediaCache {
     private val faceCache = ConcurrentHashMap<String, Bitmap>()
     private val audioCache = ConcurrentHashMap<String, Bitmap>()
+    private val pcmCache = ConcurrentHashMap<String, FloatArray>()
     private val assetNameCache = ConcurrentHashMap<String, String>()
     private val mediaUriCache = ConcurrentHashMap<String, String>()
     private val boundFiles = Collections.synchronizedSet(HashSet<String>())
@@ -666,7 +946,8 @@ object NotificationMediaCache {
         faceBitmap: Bitmap? = null,
         audioBitmap: Bitmap? = null,
         assetName: String? = null,
-        mediaUriString: String? = null
+        mediaUriString: String? = null,
+        audioPcm: FloatArray? = null
     ) {
         if (faceCache.size > 30) {
             try {
@@ -680,6 +961,12 @@ object NotificationMediaCache {
                 audioCache.remove(key)
             } catch (e: Exception) {}
         }
+        if (pcmCache.size > 30) {
+            try {
+                val key = pcmCache.keys().nextElement()
+                pcmCache.remove(key)
+            } catch (e: Exception) {}
+        }
 
         faceBitmap?.takeIf { !it.isRecycled && it.width > 0 && it.height > 0 }?.let {
             faceCache[notifId] = it
@@ -689,6 +976,9 @@ object NotificationMediaCache {
             audioCache[notifId] = it
             if (context != null) saveBitmapToCache(context, "audio_$notifId.png", it)
         }
+        audioPcm?.takeIf { it.isNotEmpty() }?.let {
+            pcmCache[notifId] = it
+        }
         assetName?.let { assetNameCache[notifId] = it }
         mediaUriString?.let {
             mediaUriCache[notifId] = it
@@ -697,7 +987,12 @@ object NotificationMediaCache {
     }
 
     fun hasMedia(notifId: String): Boolean =
-        faceCache.containsKey(notifId) || audioCache.containsKey(notifId) || mediaUriCache.containsKey(notifId)
+        faceCache.containsKey(notifId) ||
+            audioCache.containsKey(notifId) ||
+            pcmCache.containsKey(notifId) ||
+            mediaUriCache.containsKey(notifId)
+
+    fun getAudioPcm(notifId: String): FloatArray? = pcmCache[notifId]
 
     fun getMediaUriString(notifId: String): String? = mediaUriCache[notifId]
 
@@ -766,6 +1061,7 @@ object NotificationMediaCache {
     fun clear() {
         faceCache.clear()
         audioCache.clear()
+        pcmCache.clear()
         assetNameCache.clear()
         mediaUriCache.clear()
         boundFiles.clear()
